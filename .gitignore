@@ -1,0 +1,29 @@
+# Keil build products and personal debug settings
+/Objects/
+/Listings/
+/DebugConfig/
+/build/
+*.uvguix.*
+*.uvoptx
+*.o
+*.obj
+*.axf
+*.hex
+*.bin
+*.map
+*.dep
+*.lnp
+*.bak
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+__pycache__/
+.DS_Store
+Thumbs.db
+
+# Compatibility pointer retained locally
+/docs/
