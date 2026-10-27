@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>STM32F411 · ADC Monitor</title>
+    <style>
+        :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101923; color: #e9eff5; }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 28px 20px; }
+        main { max-width: 960px; margin: auto; }
+        header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
+        h1 { font-size: clamp(24px,4vw,36px); margin: 5px 0; letter-spacing: -1px; }
+        h2 { margin: 0; font-size: 17px; font-weight: 500; }
+        p { color: #a6b7c7; line-height: 1.6; }
+        .eyebrow { color: #70c4c1; font-size: 12px; letter-spacing: 2px; }
+        #status { border: 1px solid #476273; border-radius: 20px; padding: 8px 14px; color: #b7c6d3; }
+        #status.good { color: #7fe3ba; border-color: #37735d; }
+        #status.bad { color: #ffb1a3; border-color: #9c544b; }
+        .channels { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 20px; }
+        article, .details { background: #182634; border: 1px solid #2b4052; border-radius: 16px; padding: 24px; }
+        article:nth-child(2) { --accent: #d6b5ff; }
+        article { --accent: #6ed8c4; }
+        .pin { color: var(--accent); font-size: 14px; margin: 8px 0 24px; }
+        .voltage { font-variant-numeric: tabular-nums; font-size: 54px; letter-spacing: -2px; }
+        .unit { font-size: 22px; color: #a6b7c7; }
+        progress { width: 100%; height: 9px; accent-color: var(--accent); margin: 18px 0 8px; }
+        .raw { color: #b6c6d3; font-variant-numeric: tabular-nums; }
+        .details { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 16px 36px; color: #a6b7c7; font-size: 14px; }
+        .details strong { display: block; color: #e9eff5; margin-top: 5px; font-weight: 500; }
+        footer { margin-top: 24px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <main>
+        <header>
+            <div><div class="eyebrow">BLACK PILL / W5500</div><h1>Аналоговые входы</h1></div>
+            <div id="status" role="status">Подключение…</div>
+        </header>
+        <section class="channels" aria-label="Каналы АЦП">
+            <article>
+                <h2>Канал 1</h2><div class="pin">PA0 / ADC1_IN0</div>
+                <span class="voltage" id="v0">—</span><span class="unit"> В</span>
+                <progress id="p0" max="4095" value="0" aria-label="Уровень PA0"></progress>
+                <div class="raw">Код АЦП: <span id="r0">—</span> / 4095</div>
+            </article>
+            <article>
+                <h2>Канал 2</h2><div class="pin">PA1 / ADC1_IN1</div>
+                <span class="voltage" id="v1">—</span><span class="unit"> В</span>
+                <progress id="p1" max="4095" value="0" aria-label="Уровень PA1"></progress>
+                <div class="raw">Код АЦП: <span id="r1">—</span> / 4095</div>
+            </article>
+        </section>
+        <section class="details">
+            <div>Адрес<strong id="address">172.16.236.220:5025</strong></div>
+            <div>Время работы<strong id="uptime">—</strong></div>
+            <div>Измерений<strong id="samples">—</strong></div>
+            <div>Опорное напряжение<strong id="vref">—</strong></div>
+        </section>
+        <footer>
+            <p>Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.</p>
+            <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
+        </footer>
+    </main>
+    <script>
+        const get = (id) => document.getElementById(id);
+        get('address').textContent = location.host;
+        function clearReadings()
+        {
+            for (let i = 0; i < 2; ++i)
+            {
+                get('v' + i).textContent = '—';
+                get('r' + i).textContent = '—';
+                get('p' + i).value = 0;
+            }
+        }
+        async function update()
+        {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 1500);
+            try
+            {
+                const response = await fetch('/api/adc', {cache: 'no-store', signal: controller.signal});
+                if (!response.ok)
+                {
+                    throw new Error('HTTP ' + response.status);
+                }
+                const data = await response.json();
+                get('uptime').textContent = Math.floor(data.uptime_ms / 1000) + ' с';
+                get('samples').textContent = data.sample_count;
+                get('vref').textContent = (data.vref_mv / 1000).toFixed(3) + ' В';
+                if (!data.adc_ok)
+                {
+                    throw new Error('АЦП: ошибка измерения');
+                }
+                for (let i = 0; i < 2; ++i)
+                {
+                    get('v' + i).textContent = (data.mv[i] / 1000).toFixed(3);
+                    get('r' + i).textContent = data.raw[i];
+                    get('p' + i).value = data.raw[i];
+                }
+                get('status').textContent = 'На связи';
+                get('status').className = 'good';
+            }
+            catch (error)
+            {
+                clearReadings();
+                get('status').textContent = error.message.startsWith('АЦП') ? error.message : 'Нет свежих данных';
+                get('status').className = 'bad';
+            }
+            finally
+            {
+                clearTimeout(timeout);
+                setTimeout(update, 250);
+            }
+        }
+        update();
+    </script>
+</body>
+</html>
