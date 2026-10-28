@@ -10,6 +10,31 @@ const requests = [];
 let ledOn = false;
 let failCommand = false;
 let adcOk = true;
+let failDiagnostics = false;
+function createElement()
+{
+    return {textContent: '', className: '', disabled: true, open: false, children: [],
+        append(...nodes)
+        {
+            this.children.push(...nodes);
+        },
+        replaceChildren()
+        {
+            this.children = [];
+        },
+        showModal()
+        {
+            this.open = true;
+        },
+        close()
+        {
+            this.open = false;
+        },
+        addEventListener(event, callback)
+        {
+            this[event] = callback;
+        }};
+}
 const context = vm.createContext({
     document:
     {
@@ -17,22 +42,33 @@ const context = vm.createContext({
         {
             if (!elements.has(id))
             {
-                elements.set(id, {textContent: '', className: '', disabled: true,
-                    addEventListener(event, callback)
-                    {
-                        this[event] = callback;
-                    }});
+                elements.set(id, createElement());
             }
             return elements.get(id);
-        }
+        },
+        createElement
     },
     location: {host: '172.16.236.220:5025'},
     AbortController,
     setTimeout: () => 1,
-    clearTimeout: () => {},
+    clearTimeout()
+    {
+    },
     async fetch(url, options)
     {
         requests.push({url, options});
+        if (url === '/api/diagnostics')
+        {
+            return {ok: !failDiagnostics, status: failDiagnostics ? 503 : 200,
+                json: async () => ({version: 4, phy: 7, mode: 0, interrupts: 128,
+                    ip: '172.16.236.220', mask: '255.255.255.0', gateway: '172.16.236.1',
+                    mac: '02:41:11:EC:00:DC', http_port: 5025, http_sockets: 1,
+                    retry_ms: 200, retry_count: 3, init_attempts: 1, spi_errors: 0,
+                    tx_timeouts: 0, rx_bytes: 200, tx_bytes: 2000, uptime_ms: 5000,
+                    sockets: Array.from({length: 8}, (_, id) => ({id, state: id ? 0 : 23,
+                        port: id ? 0 : 5025, peer: '172.16.236.100', peer_port: id ? 0 : 50000,
+                        rx_kb: id ? 0 : 8, tx_kb: id ? 0 : 8, rx_waiting: 0, tx_free: id ? 0 : 8192, irq: 0}))})};
+        }
         if (url.startsWith('/api/led/'))
         {
             assert.equal(options.method, 'POST');
@@ -85,7 +121,27 @@ async function test()
     await vm.runInContext('update()', context);
     assert.equal(elements.get('led-state').textContent, 'Выключен');
     assert.equal(elements.get('led-on').disabled, false);
-    console.log('Web UI: LED on/off, serialized requests, error recovery and ADC fault passed');
+    elements.get('diag-open').click();
+    assert.equal(elements.get('diagnostics').open, true);
+    assert.equal(elements.get('diag-refresh').disabled, true);
+    const requestsBefore = requests.length;
+    await vm.runInContext('update()', context);
+    assert.equal(requests.length, requestsBefore + 1);
+    assert.equal(requests.at(-1).url, '/api/diagnostics');
+    assert.equal(elements.get('diag-sockets').children.length, 8);
+    assert.match(elements.get('diag-network').children[0].children[0].textContent, /0x04.*W5500/);
+    assert.equal(elements.get('diag-refresh').disabled, false);
+    assert.equal(elements.get('led-state').textContent, 'Выключен');
+    failDiagnostics = true;
+    elements.get('diag-refresh').click();
+    await vm.runInContext('update()', context);
+    assert.match(elements.get('diag-message').textContent, /Не удалось обновить/);
+    assert.equal(elements.get('diag-sockets').children.length, 8);
+    assert.equal(elements.get('led-state').textContent, 'Выключен');
+    assert.equal(elements.get('diag-refresh').disabled, false);
+    elements.get('diag-close').click();
+    assert.equal(elements.get('diagnostics').open, false);
+    console.log('Web UI: LED, serialized requests, diagnostic dialog, refresh and failure recovery passed');
 }
 
 test().catch((error) =>

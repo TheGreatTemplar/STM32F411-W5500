@@ -10,6 +10,7 @@ static uint8_t rx_buffer[8192];
 static uint32_t now;
 static bool fail_spi;
 static uint8_t send_result;
+static uint32_t register_writes;
 
 uint32_t board_millis(void)
 {
@@ -56,6 +57,7 @@ bool board_spi_transfer(uint16_t address, uint8_t control, const uint8_t *tx, ui
         }
         if ((control & 4U) != 0U)
         {
+            ++register_writes;
             if ((block == 1U) && (offset == 2U))
             {
                 *cell &= (uint8_t)~tx[i]; /* write-one-to-clear */
@@ -119,6 +121,8 @@ int test_entry(void)
     static const uint8_t payload[6] = {1U, 2U, 3U, 4U, 5U, 6U};
     uint8_t received[8] = {0U};
     uint32_t i;
+    uint32_t writes_before;
+    w5500_diag_t diag;
     now = 0U;
     fail_spi = false;
     send_result = 0x10U;
@@ -142,6 +146,25 @@ int test_entry(void)
     CHECK(w5500_state() == W5500_LISTEN);
     CHECK(socket_regs[0][4] == (APP_HTTP_PORT >> 8U));
     CHECK(socket_regs[0][5] == (APP_HTTP_PORT & 255U));
+    common[0x15] = 0x80U;
+    socket_regs[0][2] = 0x14U;
+    socket_regs[0][0x0C] = 172U;
+    socket_regs[0][0x0D] = 16U;
+    socket_regs[0][0x0E] = 236U;
+    socket_regs[0][0x0F] = 100U;
+    socket_regs[0][0x10] = 0xC0U;
+    socket_regs[0][0x11] = 0x01U;
+    writes_before = register_writes;
+    CHECK(w5500_diagnostics(&diag));
+    CHECK(register_writes == writes_before);
+    CHECK(diag.version == 4U && diag.init_attempts == 1U);
+    CHECK(diag.interrupts == 0x80U && socket_regs[0][2] == 0x14U);
+    CHECK(diag.retry_100us == 2000U && diag.retry_count == 3U);
+    CHECK(memcmp(diag.ip, ip, 4U) == 0 && memcmp(diag.mask, mask, 4U) == 0);
+    CHECK(diag.sockets[0].local_port == APP_HTTP_PORT);
+    CHECK(diag.sockets[0].remote_port == 49153U && diag.sockets[0].remote_ip[3] == 100U);
+    CHECK(diag.sockets[0].rx_kb == 8U && diag.sockets[0].tx_kb == 8U);
+    CHECK(diag.sockets[7].state == 0U && diag.sockets[7].rx_kb == 0U);
     socket_regs[0][3] = W5500_ESTABLISHED;
     socket_regs[0][0x28] = 0xFFU;
     socket_regs[0][0x29] = 0xFCU;
@@ -169,13 +192,19 @@ int test_entry(void)
     CHECK(!w5500_send(payload, 8193U));
     socket_regs[0][0x20] = 0U;
     CHECK(!w5500_send(payload, sizeof(payload))); /* no TX space */
+    CHECK(w5500_diagnostics(&diag));
+    CHECK(diag.tx_timeouts == 3U && diag.rx_bytes == 6U && diag.tx_bytes == 6U);
     fail_spi = true;
     CHECK(w5500_link_speed_mbps() == 0U);
     CHECK(w5500_receive(received, sizeof(received)) == -1);
     CHECK(!w5500_healthy());
+    CHECK(!w5500_diagnostics(&diag));
+    CHECK(diag.spi_errors == 1U);
     fail_spi = false;
     CHECK(w5500_init());
     CHECK(w5500_healthy());
+    CHECK(w5500_diagnostics(&diag));
+    CHECK(diag.init_attempts == 2U && diag.spi_errors == 1U && diag.tx_timeouts == 3U);
     w5500_disconnect();
     CHECK(w5500_state() == 0x18U);
     w5500_close();

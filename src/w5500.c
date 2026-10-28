@@ -1,6 +1,7 @@
 #include "w5500.h"
 #include "board.h"
 #include "config.h"
+#include <string.h>
 
 /* W5500 variable-length SPI frames. Only socket 0 is used in this test. */
 #define COMMON_BLOCK 0U
@@ -20,11 +21,17 @@
 #define SN_RX_RD 0x0028U
 
 static bool io_ok;
+static uint32_t init_attempts;
+static uint32_t spi_errors;
+static uint32_t tx_timeouts;
+static uint32_t rx_bytes;
+static uint32_t tx_bytes;
 
 static void read_bytes(uint8_t block, uint16_t address, uint8_t *data, size_t size)
 {
     if (io_ok && !board_spi_transfer(address, (uint8_t)(block << 3U), NULL, data, size))
     {
+        ++spi_errors;
         io_ok = false;
     }
 }
@@ -34,6 +41,7 @@ static void write_bytes(uint8_t block, uint16_t address, const uint8_t *data, si
     if (io_ok &&
         !board_spi_transfer(address, (uint8_t)(((uint32_t)block << 3U) | 4U), data, NULL, size))
     {
+        ++spi_errors;
         io_ok = false;
     }
 }
@@ -102,6 +110,7 @@ bool w5500_init(void)
     static const uint8_t gateway[4] = APP_GATEWAY;
     uint32_t socket;
     uint8_t check[4] = {0U, 0U, 0U, 0U};
+    ++init_attempts;
     board_w5500_reset();
     io_ok = true;
     if (read8(COMMON_BLOCK, 0x0039U) != 0x04U)
@@ -209,7 +218,12 @@ int32_t w5500_receive(uint8_t *data, size_t capacity)
     /* W5500 wraps its ring buffer internally, including the 16-bit pointer wrap. */
     read_bytes(RX_BLOCK, pointer, data, count);
     write16(SN_RX_RD, (uint16_t)(pointer + count));
-    return command(0x40U) ? (int32_t)count : -1;
+    if (!command(0x40U))
+    {
+        return -1;
+    }
+    rx_bytes += count;
+    return (int32_t)count;
 }
 
 bool w5500_send(const void *data, size_t size)
@@ -222,8 +236,12 @@ bool w5500_send(const void *data, size_t size)
     }
     while (io_ok && (stable16(SN_TX_FSR) < size))
     {
-        if (((uint32_t)(board_millis() - start) >= 1000U) ||
-            ((w5500_state() != W5500_ESTABLISHED) && (w5500_state() != W5500_CLOSE_WAIT)))
+        if ((uint32_t)(board_millis() - start) >= 1000U)
+        {
+            ++tx_timeouts;
+            return false;
+        }
+        if ((w5500_state() != W5500_ESTABLISHED) && (w5500_state() != W5500_CLOSE_WAIT))
         {
             return false;
         }
@@ -246,17 +264,80 @@ bool w5500_send(const void *data, size_t size)
         const uint8_t irq = read8(SOCKET_BLOCK, SN_IR);
         if ((irq & 0x08U) != 0U)
         {
+            ++tx_timeouts;
             return false;
         }
         if ((irq & 0x10U) != 0U)
         {
             write8(SOCKET_BLOCK, SN_IR, 0x10U);
+            if (io_ok)
+            {
+                tx_bytes += (uint32_t)size;
+            }
             return io_ok;
         }
         if ((uint32_t)(board_millis() - start) >= 1000U)
         {
+            ++tx_timeouts;
             return false;
         }
     }
     return false;
+}
+
+static uint16_t diagnostic_read16(uint8_t block, uint16_t address, bool changing)
+{
+    uint32_t attempt;
+    uint16_t previous = 0U;
+    for (attempt = 0U; io_ok && (attempt < 16U); ++attempt)
+    {
+        uint8_t bytes[2] = {0U, 0U};
+        uint16_t value;
+        read_bytes(block, address, bytes, sizeof(bytes));
+        value = (uint16_t)(((uint16_t)bytes[0] << 8U) | bytes[1]);
+        if (!changing || ((attempt != 0U) && (value == previous)))
+        {
+            return value;
+        }
+        previous = value;
+    }
+    io_ok = false;
+    return 0U;
+}
+
+bool w5500_diagnostics(w5500_diag_t *diag)
+{
+    uint32_t socket;
+    memset(diag, 0, sizeof(*diag));
+    diag->version = read8(COMMON_BLOCK, 0x0039U);
+    diag->phy = read8(COMMON_BLOCK, 0x002EU);
+    diag->mode = read8(COMMON_BLOCK, 0x0000U);
+    diag->interrupts = read8(COMMON_BLOCK, 0x0015U);
+    diag->retry_100us = diagnostic_read16(COMMON_BLOCK, 0x0019U, false);
+    diag->retry_count = read8(COMMON_BLOCK, 0x001BU);
+    read_bytes(COMMON_BLOCK, 0x0001U, diag->gateway, sizeof(diag->gateway));
+    read_bytes(COMMON_BLOCK, 0x0005U, diag->mask, sizeof(diag->mask));
+    read_bytes(COMMON_BLOCK, 0x0009U, diag->mac, sizeof(diag->mac));
+    read_bytes(COMMON_BLOCK, 0x000FU, diag->ip, sizeof(diag->ip));
+    for (socket = 0U; socket < 8U; ++socket)
+    {
+        const uint8_t block = (uint8_t)(1U + 4U * socket);
+        w5500_socket_diag_t *entry = &diag->sockets[socket];
+        entry->state = read8(block, SN_SR);
+        entry->interrupts = read8(block, SN_IR);
+        entry->local_port = diagnostic_read16(block, SN_PORT, false);
+        entry->remote_port = diagnostic_read16(block, 0x0010U, false);
+        entry->rx_waiting = diagnostic_read16(block, SN_RX_RSR, true);
+        entry->tx_free = diagnostic_read16(block, SN_TX_FSR, true);
+        entry->rx_kb = read8(block, SN_RXBUF_SIZE);
+        entry->tx_kb = read8(block, SN_TXBUF_SIZE);
+        read_bytes(block, 0x000CU, entry->remote_ip, sizeof(entry->remote_ip));
+    }
+    diag->init_attempts = init_attempts;
+    diag->spi_errors = spi_errors;
+    diag->tx_timeouts = tx_timeouts;
+    diag->rx_bytes = rx_bytes;
+    diag->tx_bytes = tx_bytes;
+    /* Read-only snapshot: do not acknowledge or clear interrupt flags. */
+    return io_ok;
 }

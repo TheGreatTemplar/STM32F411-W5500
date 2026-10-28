@@ -9,12 +9,42 @@ static char input[2048];
 static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
-static char output[16384];
+static char output[24576];
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
 static bool led_on;
 static uint32_t led_writes;
+static bool fail_diagnostics;
+
+bool w5500_diagnostics(w5500_diag_t *diag)
+{
+    uint32_t i;
+    memset(diag, 0, sizeof(*diag));
+    diag->version = 4U;
+    diag->phy = 7U;
+    diag->init_attempts = 1U;
+    diag->retry_100us = 2000U;
+    diag->retry_count = 3U;
+    diag->ip[0] = 172U;
+    diag->ip[1] = 16U;
+    diag->ip[2] = 236U;
+    diag->ip[3] = 220U;
+    for (i = 0U; i < 8U; ++i)
+    {
+        /* Exercise serializer bounds with the largest register values. */
+        diag->sockets[i].state = 255U;
+        diag->sockets[i].interrupts = 255U;
+        diag->sockets[i].local_port = 65535U;
+        diag->sockets[i].remote_port = 65535U;
+        memset(diag->sockets[i].remote_ip, 255, 4U);
+        diag->sockets[i].rx_waiting = 65535U;
+        diag->sockets[i].tx_free = 65535U;
+        diag->sockets[i].rx_kb = 16U;
+        diag->sockets[i].tx_kb = 16U;
+    }
+    return !fail_diagnostics;
+}
 
 void board_led(bool on);
 bool board_led_is_on(void);
@@ -105,6 +135,7 @@ static void prepare(const char *text)
     fragment_size = sizeof(input);
     now = 0U;
     fail_send = false;
+    fail_diagnostics = false;
     link_speed_mbps = 100U;
     state = W5500_ESTABLISHED;
     http_reset();
@@ -259,5 +290,20 @@ int test_entry(void)
     CHECK(framing_ok());
     http_reset();
     CHECK(!led_on && led_writes == 2U);
+    prepare("GET /api/diagnostics HTTP/1.1\r\n\r\n");
+    http_poll(&adc);
+    CHECK(strstr(output, "200 OK") != NULL);
+    CHECK(strstr(output, "\"version\":4") != NULL);
+    CHECK(strstr(output, "\"ip\":\"172.16.236.220\"") != NULL);
+    CHECK(strstr(output, "\"id\":7") != NULL);
+    CHECK(strstr(output, "\"peer\":\"255.255.255.255\"") != NULL);
+    CHECK(strstr(output, "\"retry_ms\":200,\"retry_count\":3") != NULL);
+    CHECK(framing_ok());
+    CHECK(led_writes == 2U);
+    prepare("GET /api/diagnostics HTTP/1.1\r\n\r\n");
+    fail_diagnostics = true;
+    http_poll(&adc);
+    CHECK(strstr(output, "503 Service Unavailable") != NULL);
+    CHECK(framing_ok());
     return 0;
 }

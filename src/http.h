@@ -15,7 +15,8 @@ typedef enum
     HTTP_METHOD_NOT_ALLOWED,
     HTTP_LED_ON,
     HTTP_LED_OFF,
-    HTTP_POST_REQUIRED
+    HTTP_POST_REQUIRED,
+    HTTP_DIAGNOSTICS
 } http_route_t;
 
 typedef struct

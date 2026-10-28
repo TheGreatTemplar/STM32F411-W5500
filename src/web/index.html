@@ -38,6 +38,17 @@
         button:hover { filter: brightness(1.15); }
         button:disabled { opacity: 0.45; cursor: wait; }
         #led-message { font-size: 13px; min-height: 21px; margin: 12px 0 0; }
+        .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+        dialog { width: min(1100px,calc(100% - 24px)); max-height: 90vh; padding: 24px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 18px; }
+        dialog::backdrop { background: #050b13bb; }
+        .diag-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; margin: 20px 0; }
+        .diag-grid div { padding: 14px; background: #182634; border-radius: 10px; color: #a6b7c7; font-size: 13px; }
+        .diag-grid strong { display: block; color: #e9eff5; margin-top: 6px; font-size: 15px; overflow-wrap: anywhere; }
+        .table-scroll { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+        th, td { padding: 12px 10px; border-bottom: 1px solid #2b4052; text-align: left; }
+        th { color: #a6b7c7; }
+        #diag-message { min-height: 24px; }
         footer { margin-top: 24px; font-size: 13px; }
     </style>
 </head>
@@ -45,7 +56,7 @@
     <main>
         <header>
             <div><div class="eyebrow">BLACK PILL / W5500</div><h1>Аналоговые входы</h1></div>
-            <div id="status" role="status">Подключение…</div>
+            <div class="toolbar"><div id="status" role="status">Подключение…</div><button type="button" id="diag-open">Диагностика</button></div>
         </header>
         <section class="channels" aria-label="Каналы АЦП">
             <article>
@@ -77,10 +88,92 @@
             <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
         </footer>
     </main>
+    <dialog id="diagnostics" aria-labelledby="diag-title">
+        <div class="led-header"><h2 id="diag-title">Диагностика стенда</h2><button type="button" id="diag-close">Закрыть</button></div>
+        <p id="diag-message" role="status">Ожидание данных…</p>
+        <h2>W5500 · сеть и контроллер</h2>
+        <div class="diag-grid" id="diag-network"></div>
+        <h2>Аппаратные сокеты</h2>
+        <div class="table-scroll"><table><thead><tr><th>№</th><th>Состояние</th><th>Порт</th><th>Клиент</th><th>RX/TX, КБ</th><th>RX ждёт, Б</th><th>TX свободно, Б</th><th>IRQ</th></tr></thead><tbody id="diag-sockets"></tbody></table></div>
+        <p>Снимок включает соединение, по которому запрошена диагностика. Флаги IRQ читаются без сброса.</p>
+        <h2>Прошивка · счётчики с запуска MCU</h2>
+        <div class="diag-grid" id="diag-software"></div>
+        <p>Счётчики относятся к драйверу TCP-сокета; это не полный Ethernet-трафик, не число пакетов и не ошибки CRC. Значения 32-битные, при переполнении начинаются с нуля.</p>
+        <button type="button" id="diag-refresh">Обновить</button>
+    </dialog>
     <script>
         const get = (id) => document.getElementById(id);
         let pendingLed = null;
         let ledBusy = false;
+        let pendingDiagnostics = false;
+        function diagnosticCards(id, items)
+        {
+            const target = get(id);
+            target.replaceChildren();
+            for (const [label, value] of items)
+            {
+                const card = document.createElement('div');
+                card.textContent = label;
+                const text = document.createElement('strong');
+                text.textContent = String(value);
+                card.append(text);
+                target.append(card);
+            }
+        }
+        function hex(value)
+        {
+            return '0x' + value.toString(16).toUpperCase().padStart(2, '0');
+        }
+        function showDiagnostics(data)
+        {
+            const link = (data.phy & 1) !== 0;
+            diagnosticCards('diag-network', [
+                ['Версия чипа', hex(data.version) + (data.version === 4 ? ' · W5500' : ' · неожиданное значение')],
+                ['Ethernet link', link ? ((data.phy & 2) ? '100 Мбит/с' : '10 Мбит/с') : 'Нет линка'],
+                ['Дуплекс', link ? ((data.phy & 4) ? 'Full duplex' : 'Half duplex') : '—'],
+                ['IP / HTTP порт', data.ip + ':' + data.http_port], ['Маска', data.mask],
+                ['Шлюз', data.gateway], ['MAC', data.mac],
+                ['Повтор передачи RTR / RCR', data.retry_ms + ' мс / ' + data.retry_count],
+                ['PHYCFGR / MR / IR', hex(data.phy) + ' / ' + hex(data.mode) + ' / ' + hex(data.interrupts)],
+                ['Конфликт IP (флаг IR)', (data.interrupts & 128) ? 'Обнаружен' : 'Флаг не установлен'],
+                ['Сокетов HTTP в прошивке', data.http_sockets + ' из 8 аппаратных']
+            ]);
+            const states = {0: 'CLOSED', 19: 'INIT', 20: 'LISTEN', 21: 'SYN_SENT', 22: 'SYN_RECV',
+                23: 'ESTABLISHED', 24: 'FIN_WAIT', 26: 'CLOSING', 27: 'TIME_WAIT', 28: 'CLOSE_WAIT', 29: 'LAST_ACK', 34: 'UDP', 50: 'IPRAW', 66: 'MACRAW'};
+            get('diag-sockets').replaceChildren();
+            for (const socket of data.sockets)
+            {
+                const row = document.createElement('tr');
+                const values = [socket.id, states[socket.state] || hex(socket.state), socket.port,
+                    socket.peer_port ? socket.peer + ':' + socket.peer_port : '—',
+                    socket.rx_kb + ' / ' + socket.tx_kb, socket.rx_waiting, socket.tx_free, hex(socket.irq)];
+                for (const value of values)
+                {
+                    const cell = document.createElement('td');
+                    cell.textContent = String(value);
+                    row.append(cell);
+                }
+                get('diag-sockets').append(row);
+            }
+            diagnosticCards('diag-software', [['Время работы', Math.floor(data.uptime_ms / 1000) + ' с'],
+                ['Попыток инициализации W5500', data.init_attempts], ['Ошибок обмена SPI', data.spi_errors],
+                ['Тайм-аутов отправки (ПО)', data.tx_timeouts], ['Прочитано из TCP RX, байт', data.rx_bytes],
+                ['Подтверждено TCP TX, байт', data.tx_bytes]]);
+            get('diag-message').textContent = 'Снимок обновлён. Нажми «Обновить» для нового снимка.';
+        }
+        function queueDiagnostics()
+        {
+            pendingDiagnostics = true;
+            get('diag-refresh').disabled = true;
+            get('diag-message').textContent = 'Чтение диагностики…';
+        }
+        get('diag-open').addEventListener('click', () =>
+        {
+            get('diagnostics').showModal();
+            queueDiagnostics();
+        });
+        get('diag-close').addEventListener('click', () => get('diagnostics').close());
+        get('diag-refresh').addEventListener('click', queueDiagnostics);
         function showLed(on)
         {
             get('led-state').textContent = on ? 'Включён' : 'Выключен';
@@ -120,10 +213,25 @@
             const timeout = setTimeout(() => controller.abort(), 1500);
             const command = pendingLed;
             pendingLed = null;
+            const diagnostics = command === null && pendingDiagnostics;
+            if (diagnostics)
+            {
+                pendingDiagnostics = false;
+            }
             let commandConfirmed = false;
             let haveFreshState = false;
             try
             {
+                if (diagnostics)
+                {
+                    const reply = await fetch('/api/diagnostics', {cache: 'no-store', signal: controller.signal});
+                    if (!reply.ok)
+                    {
+                        throw new Error('HTTP ' + reply.status);
+                    }
+                    showDiagnostics(await reply.json());
+                    return;
+                }
                 if (command !== null)
                 {
                     const reply = await fetch(command ? '/api/led/on' : '/api/led/off',
@@ -170,6 +278,11 @@
             }
             catch (error)
             {
+                if (diagnostics)
+                {
+                    get('diag-message').textContent = 'Не удалось обновить снимок. Предыдущие данные могут быть устаревшими.';
+                    return;
+                }
                 clearReadings();
                 if (!error.message.startsWith('АЦП'))
                 {
@@ -188,6 +301,10 @@
             finally
             {
                 clearTimeout(timeout);
+                if (diagnostics)
+                {
+                    get('diag-refresh').disabled = false;
+                }
                 if (command !== null)
                 {
                     ledBusy = false;

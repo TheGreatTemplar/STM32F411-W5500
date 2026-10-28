@@ -69,6 +69,9 @@ requests = [
     (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 0\r\nContent-Length: 0\r\n\r\n", 4),
     (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\n\r\nx", 4),
     (b"POST /api/led/onX HTTP/1.1\r\nX-Device-Control: 1\r\n\r\n", 5),
+    (b"GET /api/diagnostics HTTP/1.1\r\n\r\n", 9),
+    (b"GET /api/diagnosticsX HTTP/1.1\r\n\r\n", 3),
+    (b"POST /api/diagnostics HTTP/1.1\r\n\r\n", 5),
 ]
 count = 0
 for request, expected in requests:
@@ -78,7 +81,7 @@ for request, expected in requests:
     result = call(uc, symbols["http_parse"])
     assert result == expected, (request, result, expected)
     count += 1
-for request, _ in requests[:3] + requests[10:12]:
+for request, _ in requests[:3] + requests[10:12] + requests[-3:-2]:
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
         uc.reg_write(UC_ARM_REG_R0, 0x20010000)

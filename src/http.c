@@ -78,6 +78,78 @@ static bool led_response(bool on)
     return response(200U, "OK", "application/json", json, strlen(json), "");
 }
 
+static void format_ip(char text[16], const uint8_t ip[4])
+{
+    (void)snprintf(text, 16U, "%u.%u.%u.%u", (unsigned int)ip[0], (unsigned int)ip[1],
+                   (unsigned int)ip[2], (unsigned int)ip[3]);
+}
+
+static bool diagnostics_response(void)
+{
+    static char json[3072];
+    w5500_diag_t diag;
+    char ip[16];
+    char mask[16];
+    char gateway[16];
+    size_t json_used;
+    uint32_t socket;
+    int count;
+    if (!w5500_diagnostics(&diag))
+    {
+        return response(503U, "Service Unavailable", "text/plain", "Diagnostics unavailable\n", 24U,
+                        "");
+    }
+    format_ip(ip, diag.ip);
+    format_ip(mask, diag.mask);
+    format_ip(gateway, diag.gateway);
+    count = snprintf(
+        json, sizeof(json),
+        "{\"uptime_ms\":%lu,\"version\":%lu,\"phy\":%lu,\"mode\":%lu,\"interrupts\":%lu,"
+        "\"ip\":\"%s\",\"mask\":\"%s\",\"gateway\":\"%s\","
+        "\"mac\":\"%02X:%02X:%02X:%02X:%02X:%02X\",\"retry_ms\":%lu,\"retry_count\":%lu,"
+        "\"init_attempts\":%lu,\"spi_errors\":%lu,\"tx_timeouts\":%lu,"
+        "\"rx_bytes\":%lu,\"tx_bytes\":%lu,\"http_sockets\":1,\"http_port\":%u,\"sockets\":[",
+        (unsigned long)board_millis(), (unsigned long)diag.version, (unsigned long)diag.phy,
+        (unsigned long)diag.mode, (unsigned long)diag.interrupts, ip, mask, gateway,
+        (unsigned int)diag.mac[0], (unsigned int)diag.mac[1], (unsigned int)diag.mac[2],
+        (unsigned int)diag.mac[3], (unsigned int)diag.mac[4], (unsigned int)diag.mac[5],
+        (unsigned long)(diag.retry_100us / 10U), (unsigned long)diag.retry_count,
+        (unsigned long)diag.init_attempts, (unsigned long)diag.spi_errors,
+        (unsigned long)diag.tx_timeouts, (unsigned long)diag.rx_bytes, (unsigned long)diag.tx_bytes,
+        APP_HTTP_PORT);
+    if ((count <= 0) || ((size_t)count >= sizeof(json)))
+    {
+        return false;
+    }
+    json_used = (size_t)count;
+    for (socket = 0U; socket < 8U; ++socket)
+    {
+        const w5500_socket_diag_t *entry = &diag.sockets[socket];
+        format_ip(ip, entry->remote_ip);
+        count = snprintf(
+            json + json_used, sizeof(json) - json_used,
+            "%s{\"id\":%lu,\"state\":%lu,\"irq\":%lu,\"port\":%lu,\"peer\":\"%s\","
+            "\"peer_port\":%lu,\"rx_kb\":%lu,\"tx_kb\":%lu,\"rx_waiting\":%lu,\"tx_free\":%lu}",
+            socket == 0U ? "" : ",", (unsigned long)socket, (unsigned long)entry->state,
+            (unsigned long)entry->interrupts, (unsigned long)entry->local_port, ip,
+            (unsigned long)entry->remote_port, (unsigned long)entry->rx_kb,
+            (unsigned long)entry->tx_kb, (unsigned long)entry->rx_waiting,
+            (unsigned long)entry->tx_free);
+        if ((count <= 0) || ((size_t)count >= sizeof(json) - json_used))
+        {
+            return false;
+        }
+        json_used += (size_t)count;
+    }
+    if (sizeof(json) - json_used < 3U)
+    {
+        return false;
+    }
+    json[json_used++] = ']';
+    json[json_used++] = '}';
+    return response(200U, "OK", "application/json", json, json_used, "");
+}
+
 static bool dispatch(http_route_t route, const adc_snapshot_t *adc)
 {
     switch (route)
@@ -87,6 +159,8 @@ static bool dispatch(http_route_t route, const adc_snapshot_t *adc)
                         "");
     case HTTP_ADC:
         return adc_response(adc);
+    case HTTP_DIAGNOSTICS:
+        return diagnostics_response();
     case HTTP_LED_ON:
         return led_response(true);
     case HTTP_LED_OFF:
