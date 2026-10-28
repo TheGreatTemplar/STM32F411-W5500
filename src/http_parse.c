@@ -148,19 +148,24 @@ http_route_t http_parse(const char *request, size_t size)
         return HTTP_BAD_REQUEST;
     }
     path_size = (size_t)(version - path);
+    if (!post && (path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0))
+    {
+        return HTTP_COMMANDS;
+    }
     if (((path_size == 11U) && (memcmp(path, "/api/led/on", 11U) == 0)) ||
         ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)) ||
-        ((path_size == 8U) && (memcmp(path, "/api/spi", 8U) == 0)))
+        ((path_size == 8U) && (memcmp(path, "/api/spi", 8U) == 0)) ||
+        ((path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0)))
     {
         size_t body_size;
-        const bool spi = path_size == 8U;
+        const bool payload = (path_size == 8U) || (path_size == 13U);
         if (!post)
         {
             return HTTP_POST_REQUIRED;
         }
         if (!command_headers_valid(request, line_end + 2U, end, &body_size) ||
             (end > APP_REQUEST_CAPACITY) || (body_size > APP_REQUEST_CAPACITY - end) ||
-            (!spi && (body_size != 0U)) || (spi && (body_size == 0U)))
+            (!payload && (body_size != 0U)) || (payload && (body_size == 0U)))
         {
             return HTTP_BAD_REQUEST;
         }
@@ -172,9 +177,9 @@ http_route_t http_parse(const char *request, size_t size)
         {
             return HTTP_BAD_REQUEST;
         }
-        if (spi)
+        if (payload)
         {
-            return HTTP_SPI;
+            return path_size == 8U ? HTTP_SPI : HTTP_SAVE_COMMANDS;
         }
         return path_size == 11U ? HTTP_LED_ON : HTTP_LED_OFF;
     }

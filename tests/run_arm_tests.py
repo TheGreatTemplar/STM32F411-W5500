@@ -17,7 +17,7 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_AR
 def load_image(path):
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     uc.mem_map(0x08000000, 0x80000)
-    uc.mem_map(0x20000000, 0x20000)
+    uc.mem_map(0x20000000, 0x40000 if path.name == "http_test.axf" else 0x20000)
     uc.mem_map(0x10000000, 0x1000)
     with path.open("rb") as source:
         elf = ELFFile(source)
@@ -26,7 +26,7 @@ def load_image(path):
                 uc.mem_write(segment["p_vaddr"], segment.data())
         symbols = {symbol.name: symbol["st_value"]
                    for symbol in elf.get_section_by_name(".symtab").iter_symbols()}
-    uc.reg_write(UC_ARM_REG_SP, 0x2001F000)
+    uc.reg_write(UC_ARM_REG_SP, 0x2003F000 if path.name == "http_test.axf" else 0x2001F000)
     uc.reg_write(UC_ARM_REG_LR, 0x10000001)
     return uc, symbols
 
@@ -77,6 +77,8 @@ requests = [
     (b"GET /api/diagnostics HTTP/1.1\r\n\r\n", 9),
     (b"GET /api/diagnosticsX HTTP/1.1\r\n\r\n", 3),
     (b"POST /api/diagnostics HTTP/1.1\r\n\r\n", 5),
+    (b"GET /api/commands HTTP/1.1\r\n\r\n", 11),
+    (spi_request.replace(b"/api/spi", b"/api/commands"), 12),
     (spi_request, 10),
     (spi_request[:-1], 0),
     (b"GET /api/spi HTTP/1.1\r\n\r\n", 8),
@@ -91,7 +93,7 @@ for request, expected in requests:
     assert result == expected, (request, result, expected)
     count += 1
 for request, route in requests:
-    if route not in {1, 2, 6, 7, 9, 10}:
+    if route not in {1, 2, 6, 7, 9, 10, 11, 12}:
         continue
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
@@ -108,11 +110,21 @@ def parse_spi(body):
     from unicorn.arm_const import UC_ARM_REG_R2
     uc.reg_write(UC_ARM_REG_R2, 0x20018000)
     result = call(uc, symbols["spi_command_parse"])
-    return result, bytes(uc.mem_read(0x20018000, 276))
+    return result, bytes(uc.mem_read(0x20018000, 280))
+
+from unicorn import UC_HOOK_CODE
+
+def model_clock(machine, address, size, data):
+    cr = int.from_bytes(machine.mem_read(0x40023800, 4), 'little')
+    ready = (cr | (1 << 25)) if cr & (1 << 24) else (cr & ~(1 << 25))
+    machine.mem_write(0x40023800, ready.to_bytes(4, 'little'))
+    cfgr = int.from_bytes(machine.mem_read(0x40023808, 4), 'little')
+    machine.mem_write(0x40023808, ((cfgr & ~12) | ((cfgr & 3) << 2)).to_bytes(4, 'little'))
+    machine.mem_write(0x40007004, ((1 << 14) if cr & (1 << 24) else 0).to_bytes(4, 'little'))
 
 spi_cases = 0
 for mode in range(4):
-    for hz in [62500, 125000, 250000, 500000, 1000000, 2000000, 4000000]:
+    for hz in [62500, 125000, 250000, 500000, 1000000, *range(2000000, 20000001, 2000000)]:
         body = f"bus=2 mode={mode} hz={hz} lsb=1 cs_high=0 format=hex\n9F 00 aA FF".encode()
         ok, command = parse_spi(body)
         assert ok and struct.unpack_from('<5I', command) == (hz, mode, 1, 0, 4)
@@ -122,6 +134,18 @@ for mode in range(4):
         uc.mem_map(0x40003000, 0x1000) if spi_cases == 1 else None
         uc.mem_map(0x40013000, 0x1000) if spi_cases == 1 else None
         uc.mem_map(0x40023000, 0x1000) if spi_cases == 1 else None
+        if spi_cases == 1:
+            uc.mem_map(0x40007000, 0x1000)
+            uc.mem_map(0x40012000, 0x1000)
+            uc.mem_map(0xE000E000, 0x1000)
+            uc.hook_add(UC_HOOK_CODE, model_clock)
+        uc.reg_write(UC_ARM_REG_R0, hz)
+        uc.reg_write(UC_ARM_REG_R1, 0x20018800)
+        assert call(uc, symbols['spi_clock_plan']) == 1
+        system_hz, pclk1_hz, divisor = struct.unpack('<3I', bytes(uc.mem_read(0x20018800, 12)))
+        assert system_hz <= 100000000 and pclk1_hz <= 50000000
+        assert pclk1_hz // (2 << divisor) == hz
+        uc.mem_write(0x40012304, (0x00400000).to_bytes(4, 'little'))
         uc.mem_write(0x40003808, (3).to_bytes(4, 'little'))  # RXNE | TXE
         uc.mem_write(0x40013000, (0x035C).to_bytes(4, 'little'))
         uc.reg_write(UC_ARM_REG_R0, 0x20018000)
@@ -130,7 +154,12 @@ for mode in range(4):
         assert bytes(uc.mem_read(0x20018400, 4)) == command[20:24]
         cr1 = int.from_bytes(uc.mem_read(0x40003800, 4), 'little')
         assert cr1 & 3 == mode and cr1 & 128 and not cr1 & 64
-        assert 16000000 // (2 << ((cr1 >> 3) & 7)) == hz
+        assert pclk1_hz // (2 << ((cr1 >> 3) & 7)) == hz
+        if system_hz != 16000000:
+            assert int.from_bytes(uc.mem_read(symbols['SystemCoreClock'], 4), 'little') == 16000000
+            assert int.from_bytes(uc.mem_read(0xE000E014, 4), 'little') == 15999
+            assert int.from_bytes(uc.mem_read(0x40023808, 4), 'little') == 0
+            assert int.from_bytes(uc.mem_read(0x40012304, 4), 'little') == 0x00400000
         assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 12
         assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
 
@@ -175,7 +204,7 @@ assert call(uc, symbols['board_spi_console']) == 0
 uc.hook_del(hook)
 assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 28
 assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
-print('SPI console: 28 mode/rate configurations, register loopback, limits and invalid input passed')
+print('SPI console: 60 mode/rate configurations, PLL switching/restoration, register loopback, limits and invalid input passed')
 uc, symbols = load_image(root / "build/w5500_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"W5500 mock failed at C source line {result}"
@@ -184,3 +213,8 @@ uc, symbols = load_image(root / "build/http_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"HTTP integration mock failed at C source line {result}"
 print("HTTP integration: four clients, stalled connection isolation, ADC/LED/SPI and response framing passed")
+
+uc, symbols = load_image(root / "build/store_test.axf")
+result = call(uc, symbols["test_entry"])
+assert result == 0, f"Flash journal mock failed at C source line {result}"
+print("W25Q64JV: four slots, erase/page boundaries, reboot, interrupted write, CRC fallback and foreign-data protection passed")

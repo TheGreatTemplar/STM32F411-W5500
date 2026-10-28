@@ -39,6 +39,20 @@
         button:disabled { opacity: 0.45; cursor: wait; }
         #led-message { font-size: 13px; min-height: 21px; margin: 12px 0 0; }
         .spi-control { margin-top: 20px; padding: 24px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
+        .spi-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .spi-title .hint { margin: 0; }
+        .vertical-options { display: flex; flex-direction: column; gap: 8px; }
+        .command-card { padding: 18px 0; border-top: 1px solid #2b4052; }
+        .command-editor { display: grid; grid-template-columns: minmax(0,1fr) 120px; gap: 16px; align-items: start; margin-top: 8px; }
+        .command-editor textarea { min-height: 70px; }
+        .command-editor button { padding: 12px 14px; }
+        .result-title { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: 13px; }
+        .result-title .hint { margin: 0; }
+        .command-card pre { margin: 6px 0; min-height: 38px; max-height: 100px; overflow-y: auto; }
+        .command-message { min-height: 20px; font-size: 13px; margin: 8px 0; }
+        .store-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
+        #store-status { font-size: 13px; color: #a6b7c7; }
+        @media (max-width: 520px) { .command-editor { grid-template-columns: minmax(0,1fr); } .command-editor button { justify-self: start; } }
         .spi-settings { display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0; align-items: center; }
         fieldset { border: 1px solid #476273; border-radius: 10px; padding: 12px; }
         legend, .hint { color: #a6b7c7; font-size: 13px; }
@@ -93,28 +107,56 @@
             <p id="led-message" role="status"></p>
         </section>
         <section class="spi-control" aria-label="SPI-консоль">
-            <h2>SPI2 · внешнее устройство</h2>
-            <p class="hint">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p>
+            <div class="spi-title"><h2>SPI2 · внешнее устройство</h2><p class="hint">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p></div>
             <div class="spi-settings">
                 <fieldset><legend>Режим SPI</legend>
                     <label><input type="radio" name="spi-mode" id="spi-mode-0" checked>0</label>
                     <label><input type="radio" name="spi-mode" id="spi-mode-1">1</label>
                     <label><input type="radio" name="spi-mode" id="spi-mode-2">2</label>
                     <label><input type="radio" name="spi-mode" id="spi-mode-3">3</label>
-                    <div class="hint">0: CPOL=0 CPHA=0 · 1: 0/1 · 2: 1/0 · 3: 1/1</div>
+                    <div class="hint" id="spi-mode-description">CPOL=0 · CPHA=0</div>
                 </fieldset>
-                <label>Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option></select></label>
-                <label><input type="checkbox" id="spi-lsb">LSB первым</label>
-                <label><input type="checkbox" id="spi-cs-high">CS активен HIGH</label>
-                <label>Команда<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label>
+                <fieldset class="vertical-options"><legend>Порядок битов</legend>
+                    <label><input type="radio" name="spi-order" id="spi-msb" checked>MSB первым</label>
+                    <label><input type="radio" name="spi-order" id="spi-lsb">LSB первым</label>
+                </fieldset>
+                <fieldset class="vertical-options"><legend>Активный CS</legend>
+                    <label><input type="radio" name="spi-cs" id="spi-cs-low" checked>LOW</label>
+                    <label><input type="radio" name="spi-cs" id="spi-cs-high">HIGH</label>
+                </fieldset>
+                <label>Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option></select></label>
+                <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label>
             </div>
-            <label for="spi-command">Передаваемые данные · до 256 байт</label>
-            <textarea id="spi-command" spellcheck="false" aria-label="Команда SPI">9F 00 00 00</textarea>
-            <p class="hint">HEX: пары цифр, например 9F 00 00 00. ASCII: символы передаются буквально. Один CS на всю команду, 8 бит на кадр. Для чтения добавь нужное число 00 или FF.</p>
-            <button type="button" id="spi-send">Передать SPI</button>
-            <p id="spi-message" role="status"></p>
-            <div class="hint">TX</div><pre id="spi-tx">—</pre>
-            <div class="hint">RX</div><pre id="spi-rx">—</pre>
+            <p class="hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
+            <div class="store-bar"><button type="button" id="store-save" disabled>Сохранить 4 команды во Flash</button><span id="store-status" role="status">Проверка W25Q64JV…</span></div>
+            <div class="command-card">
+                <label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label>
+                <div class="command-editor"><textarea id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
+                <p id="spi-message-0" class="command-message" role="status"></p>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-0">—</pre>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-0">—</pre>
+            </div>
+            <div class="command-card">
+                <label for="spi-command-1">Команда 2 · передаваемые данные · до 256 байт</label>
+                <div class="command-editor"><textarea id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1">Передать</button></div>
+                <p id="spi-message-1" class="command-message" role="status"></p>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-1">—</pre>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-1">—</pre>
+            </div>
+            <div class="command-card">
+                <label for="spi-command-2">Команда 3 · передаваемые данные · до 256 байт</label>
+                <div class="command-editor"><textarea id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2">Передать</button></div>
+                <p id="spi-message-2" class="command-message" role="status"></p>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-2">—</pre>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-2">—</pre>
+            </div>
+            <div class="command-card">
+                <label for="spi-command-3">Команда 4 · передаваемые данные · до 256 байт</label>
+                <div class="command-editor"><textarea id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3">Передать</button></div>
+                <p id="spi-message-3" class="command-message" role="status"></p>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-3">—</pre>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-3">—</pre>
+            </div>
         </section>
         <footer>
             <p>Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.</p>
@@ -141,22 +183,55 @@
         let pendingDiagnostics = false;
         let pendingSpi = null;
         let spiBusy = false;
-        function queueSpi()
+        let pendingSave = null;
+        let pendingStoreLoad = true;
+        let storeWaiting = false;
+        let nextStorePoll = 0;
+        let saveBusy = false;
+        let flashReady = false;
+        let draftDirty = false;
+        let saveFingerprint = '';
+        function spiMode()
         {
-            if (spiBusy)
+            for (let i = 0; i < 4; ++i)
             {
-                return;
+                if (get('spi-mode-' + i).checked)
+                {
+                    return i;
+                }
             }
-            const text = get('spi-command').value;
-            const format = get('spi-format').value;
+            return 0;
+        }
+        function settingsLine()
+        {
+            return 'bus=2 mode=' + spiMode() + ' hz=' + get('spi-hz').value +
+                ' lsb=' + (get('spi-lsb').checked ? 1 : 0) +
+                ' cs_high=' + (get('spi-cs-high').checked ? 1 : 0) +
+                ' format=' + get('spi-format').value;
+        }
+        function draftSnapshot()
+        {
+            return JSON.stringify([settingsLine(), ...Array.from({length: 4}, (_, i) => get('spi-command-' + i).value)]);
+        }
+        function markDirty()
+        {
+            draftDirty = true;
+            const mode = spiMode();
+            get('spi-mode-description').textContent = 'CPOL=' + (mode >> 1) + ' · CPHA=' + (mode & 1);
+        }
+        function validateText(text, allowEmpty)
+        {
+            if (!text && allowEmpty)
+            {
+                return '';
+            }
             let size;
-            if (format === 'hex')
+            if (get('spi-format').value === 'hex')
             {
                 const hex = text.replace(/\s/g, '');
                 if (!/^(?:[0-9a-fA-F]{2})+$/.test(hex))
                 {
-                    get('spi-message').textContent = 'HEX: введи полные пары цифр, например 9F 00 00 00.';
-                    return;
+                    return 'HEX: введи полные пары цифр, например 9F 00 00 00.';
                 }
                 size = hex.length / 2;
             }
@@ -164,33 +239,107 @@
             {
                 if (!/^[\x01-\x7F]+$/.test(text))
                 {
-                    get('spi-message').textContent = 'ASCII: разрешены только символы с кодами 1…127.';
-                    return;
+                    return 'ASCII: разрешены только символы с кодами 1…127.';
                 }
                 size = text.length;
             }
-            if (size > 256)
+            return size > 256 ? 'Максимум 256 байт за одну транзакцию.' : '';
+        }
+        function queueSpi(index)
+        {
+            if (spiBusy)
             {
-                get('spi-message').textContent = 'Максимум 256 байт за одну транзакцию.';
                 return;
             }
-            let mode = 0;
+            const text = get('spi-command-' + index).value;
+            const error = validateText(text, false);
+            if (error)
+            {
+                get('spi-message-' + index).textContent = error;
+                return;
+            }
+            pendingSpi = {index, body: settingsLine() + '\n' + text};
+            spiBusy = true;
             for (let i = 0; i < 4; ++i)
             {
-                if (get('spi-mode-' + i).checked)
+                get('spi-send-' + i).disabled = true;
+            }
+            get('spi-rx-' + index).textContent = '—';
+            get('spi-message-' + index).textContent = 'Отправка SPI-команды…';
+        }
+        function queueSave()
+        {
+            if (saveBusy || !flashReady)
+            {
+                return;
+            }
+            const texts = Array.from({length: 4}, (_, i) => get('spi-command-' + i).value);
+            for (let i = 0; i < 4; ++i)
+            {
+                const error = validateText(texts[i], true);
+                if (error || texts[i].length > 768)
                 {
-                    mode = i;
+                    get('store-status').textContent = 'Команда ' + (i + 1) + ': ' + (error || 'Максимум 768 символов для сохранения.');
+                    return;
                 }
             }
-            pendingSpi = 'bus=2 mode=' + mode + ' hz=' + get('spi-hz').value +
-                ' lsb=' + (get('spi-lsb').checked ? 1 : 0) +
-                ' cs_high=' + (get('spi-cs-high').checked ? 1 : 0) + ' format=' + format + '\n' + text;
-            spiBusy = true;
-            get('spi-send').disabled = true;
-            get('spi-rx').textContent = '—';
-            get('spi-message').textContent = 'Отправка SPI-команды…';
+            pendingSave = settingsLine() + '\nlengths=' + texts.map((text) => text.length).join(',') + '\n' + texts.join('');
+            saveFingerprint = draftSnapshot();
+            saveBusy = true;
+            get('store-save').disabled = true;
+            get('store-status').textContent = 'Сохранение во внешнюю Flash…';
         }
-        get('spi-send').addEventListener('click', queueSpi);
+        function showStore(data, initial)
+        {
+            const errors = {1: 'Flash не найдена', 2: 'Неожиданный JEDEC ID', 3: 'Последние 8 Кбайт заняты чужими данными',
+                4: 'Flash занята', 5: 'Некорректные команды', 6: 'Ошибка SPI1 / защиты Flash', 7: 'Тайм-аут Flash', 8: 'Ошибка проверки записи'};
+            flashReady = data.present && data.ready;
+            if (initial && data.has_saved && !draftDirty)
+            {
+                const settings = data.settings;
+                get('spi-hz').value = String(settings.hz);
+                get('spi-format').value = settings.format;
+                get('spi-lsb').checked = !!settings.lsb;
+                get('spi-msb').checked = !settings.lsb;
+                get('spi-cs-high').checked = !!settings.cs_high;
+                get('spi-cs-low').checked = !settings.cs_high;
+                for (let i = 0; i < 4; ++i)
+                {
+                    get('spi-mode-' + i).checked = settings.mode === i;
+                    get('spi-command-' + i).value = data.commands[i];
+                }
+                markDirty();
+                draftDirty = false;
+            }
+            storeWaiting = data.busy;
+            nextStorePoll = Date.now() + 500;
+            if (data.busy)
+            {
+                get('store-status').textContent = 'Запись W25Q64JV · не отключай питание до завершения…';
+            }
+            else
+            {
+                if (saveBusy && data.save_ok && saveFingerprint === draftSnapshot())
+                {
+                    draftDirty = false;
+                }
+                saveBusy = false;
+                get('store-status').textContent = data.error ? (errors[data.error] || 'Ошибка Flash') :
+                    ('W25Q64JV · 8 Мбайт · ' + (data.has_saved ? 'сохранена версия ' + data.sequence : 'команды ещё не сохранены'));
+            }
+            get('store-save').disabled = !flashReady || saveBusy || data.busy;
+        }
+        for (let i = 0; i < 4; ++i)
+        {
+            get('spi-send-' + i).addEventListener('click', () => queueSpi(i));
+            get('spi-command-' + i).addEventListener('input', markDirty);
+            get('spi-mode-' + i).addEventListener('change', markDirty);
+        }
+        for (const id of ['spi-hz', 'spi-format', 'spi-msb', 'spi-lsb', 'spi-cs-low', 'spi-cs-high'])
+        {
+            get(id).addEventListener('change', markDirty);
+        }
+        get('store-save').addEventListener('click', queueSave);
         function diagnosticCards(id, items)
         {
             const target = get(id);
@@ -304,6 +453,18 @@
                 pendingSpi = null;
             }
             const diagnostics = command === null && spi === null && pendingDiagnostics;
+            const save = command === null && spi === null && !diagnostics ? pendingSave : null;
+            if (save !== null)
+            {
+                pendingSave = null;
+            }
+            const storage = command === null && spi === null && !diagnostics && save === null &&
+                (pendingStoreLoad || storeWaiting) && Date.now() >= nextStorePoll;
+            const initialStore = storage && pendingStoreLoad;
+            if (storage)
+            {
+                pendingStoreLoad = false;
+            }
             if (diagnostics)
             {
                 pendingDiagnostics = false;
@@ -312,19 +473,32 @@
             let haveFreshState = false;
             try
             {
+                if (save !== null || storage)
+                {
+                    const options = save !== null ? {method: 'POST',
+                        headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'},
+                        body: save, signal: controller.signal} : {cache: 'no-store', signal: controller.signal};
+                    const reply = await fetch('/api/commands', options);
+                    if (!reply.ok)
+                    {
+                        throw new Error((await reply.text()).trim());
+                    }
+                    showStore(await reply.json(), initialStore);
+                    return;
+                }
                 if (spi !== null)
                 {
                     const reply = await fetch('/api/spi', {method: 'POST',
                         headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'},
-                        body: spi, signal: controller.signal});
+                        body: spi.body, signal: controller.signal});
                     if (!reply.ok)
                     {
                         throw new Error('SPI: ' + (await reply.text()).trim());
                     }
                     const result = await reply.json();
-                    get('spi-tx').textContent = result.tx.match(/../g).join(' ');
-                    get('spi-rx').textContent = result.rx.match(/../g).join(' ');
-                    get('spi-message').textContent = 'Передано ' + result.count + ' байт · режим ' + result.mode + ' · ' + result.hz + ' Гц';
+                    get('spi-tx-' + spi.index).textContent = result.tx.match(/../g).join(' ');
+                    get('spi-rx-' + spi.index).textContent = result.rx.match(/../g).join(' ');
+                    get('spi-message-' + spi.index).textContent = 'Передано ' + result.count + ' байт · режим ' + result.mode + ' · ' + result.hz + ' Гц';
                     return;
                 }
                 if (diagnostics)
@@ -383,9 +557,19 @@
             }
             catch (error)
             {
+                if (save !== null || storage)
+                {
+                    saveBusy = false;
+                    storeWaiting = true;
+                    pendingStoreLoad = initialStore;
+                    nextStorePoll = Date.now() + 1000;
+                    get('store-save').disabled = true;
+                    get('store-status').textContent = 'Нет подтверждения сохранения. Проверь Flash/связь и обнови страницу; автоповтора записи нет.';
+                    return;
+                }
                 if (spi !== null)
                 {
-                    get('spi-message').textContent = error.message.startsWith('SPI:') ? error.message :
+                    get('spi-message-' + spi.index).textContent = error.message.startsWith('SPI:') ? error.message :
                         'Нет подтверждения: команда могла выполниться. Автоповтора нет; проверь устройство перед повторной передачей.';
                     return;
                 }
@@ -415,7 +599,10 @@
                 if (spi !== null)
                 {
                     spiBusy = false;
-                    get('spi-send').disabled = false;
+                    for (let i = 0; i < 4; ++i)
+                    {
+                        get('spi-send-' + i).disabled = false;
+                    }
                 }
                 if (diagnostics)
                 {

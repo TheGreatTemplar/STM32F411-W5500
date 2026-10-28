@@ -15,8 +15,17 @@ typedef struct
     uint32_t cs_high;
     size_t size;
     uint8_t tx[SPI_CONSOLE_MAX_BYTES];
+    uint32_t ascii;
 } spi_command_t;
 
+typedef struct
+{
+    uint32_t system_hz;
+    uint32_t pclk1_hz;
+    uint32_t prescaler;
+} spi_clock_plan_t;
+
+bool spi_clock_plan(uint32_t hz, spi_clock_plan_t *plan);
 bool spi_command_parse(const char *text, size_t size, spi_command_t *command);
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES]);
 

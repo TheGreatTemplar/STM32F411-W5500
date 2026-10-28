@@ -46,10 +46,11 @@ void board_init(void)
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOBEN | RCC_AHB1ENR_GPIOCEN;
     (void)RCC->AHB1ENR;
     /* Set inactive network control levels before changing direction. */
-    GPIOA->BSRR = 1UL << 15U; /* W5500 CS */
+    GPIOA->BSRR = (1UL << 15U) | (1UL << 4U); /* W5500 / Flash CS */
     GPIOB->BSRR = 1UL << (2U + 16U);
     GPIOC->BSRR = 1UL << 13U; /* LED off, active low */
     output_mode(GPIOA, 15U);
+    output_mode(GPIOA, 4U);
     output_mode(GPIOB, 2U); /* W5500 reset */
     output_mode(GPIOC, 13U);
     /* Standalone bench: PB12 CS, PB13/14/15 SPI2 AF5. */
@@ -57,7 +58,7 @@ void board_init(void)
     output_mode(GPIOB, 12U);
     GPIOB->MODER = (GPIOB->MODER & ~0xFC000000UL) | 0xA8000000UL;
     GPIOB->AFR[1] = (GPIOB->AFR[1] & ~0xFFF00000UL) | 0x55500000UL;
-    GPIOB->OSPEEDR = (GPIOB->OSPEEDR & ~0xFC000000UL) | 0x54000000UL;
+    GPIOB->OSPEEDR |= 0xFC000000UL; /* Very high speed for up to 20 MHz SPI2. */
     GPIOB->PUPDR &= ~0xFC000000UL;
     RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
     (void)RCC->APB1ENR;
@@ -133,6 +134,7 @@ bool board_spi_transfer(uint16_t address, uint8_t control, const uint8_t *tx, ui
     size_t i;
     bool ok;
     uint32_t start;
+    GPIOA->BSRR = 1UL << 4U; /* Flash must be deselected during Ethernet frames. */
     GPIOA->BSRR = 1UL << 31U;
     ok = spi_byte((uint8_t)(address >> 8U), &rx) && spi_byte((uint8_t)address, &rx) &&
          spi_byte(control, &rx);
@@ -153,6 +155,43 @@ bool board_spi_transfer(uint16_t address, uint8_t control, const uint8_t *tx, ui
     if (!ok)
     {
         /* Recover the peripheral; caller restarts the W5500 after an I/O error. */
+        RCC->APB2RSTR |= RCC_APB2RSTR_SPI1RST;
+        RCC->APB2RSTR &= ~RCC_APB2RSTR_SPI1RST;
+        SPI1->CR1 =
+            SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_BR_1 | SPI_CR1_BR_0 | SPI_CR1_SPE;
+    }
+    return ok;
+}
+
+bool board_flash_transfer(const uint8_t *prefix, size_t prefix_size, const uint8_t *tx,
+                          uint8_t *received, size_t size)
+{
+    uint8_t rx = 0U;
+    size_t i;
+    bool ok = true;
+    uint32_t start;
+    GPIOA->BSRR = 1UL << 15U;
+    GPIOA->BSRR = 1UL << 20U;
+    for (i = 0U; ok && (i < prefix_size); ++i)
+    {
+        ok = spi_byte(prefix[i], &rx);
+    }
+    for (i = 0U; ok && (i < size); ++i)
+    {
+        ok = spi_byte(tx != NULL ? tx[i] : 0U, &rx);
+        if (received != NULL)
+        {
+            received[i] = rx;
+        }
+    }
+    start = board_millis();
+    while (ok && ((SPI1->SR & SPI_SR_BSY) != 0U))
+    {
+        ok = (uint32_t)(board_millis() - start) < 5U;
+    }
+    GPIOA->BSRR = 1UL << 4U;
+    if (!ok)
+    {
         RCC->APB2RSTR |= RCC_APB2RSTR_SPI1RST;
         RCC->APB2RSTR &= ~RCC_APB2RSTR_SPI1RST;
         SPI1->CR1 =
@@ -182,10 +221,87 @@ bool board_adc_read(uint16_t values[2])
     return true;
 }
 
+static bool clock_wait(volatile uint32_t *reg, uint32_t mask, uint32_t value)
+{
+    const uint32_t start = board_millis();
+    while ((*reg & mask) != value)
+    {
+        if ((uint32_t)(board_millis() - start) >= 20U)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void set_tick_clock(uint32_t hz)
+{
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    SystemCoreClock = hz;
+    SysTick->LOAD = hz / 1000U - 1U;
+    SysTick->VAL = 0U;
+    __set_PRIMASK(primask);
+}
+
+static void restore_clock(uint32_t cfgr, uint32_t acr, uint32_t adc_ccr)
+{
+    RCC->CFGR &= ~RCC_CFGR_SW;
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, RCC_CFGR_SWS_HSI))
+    {
+        NVIC_SystemReset();
+    }
+    set_tick_clock(16000000U);
+    RCC->CR &= ~RCC_CR_PLLON;
+    RCC->CFGR = cfgr;
+    FLASH->ACR = acr;
+    ADC->CCR = adc_ccr;
+}
+
+static bool boost_clock(const spi_clock_plan_t *plan)
+{
+    uint32_t n;
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+    (void)RCC->APB1ENR;
+    FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | FLASH_ACR_LATENCY_3WS;
+    if (!clock_wait(&FLASH->ACR, FLASH_ACR_LATENCY, FLASH_ACR_LATENCY_3WS))
+    {
+        return false;
+    }
+    ADC->CCR = (ADC->CCR & ~ADC_CCR_ADCPRE) | ADC_CCR_ADCPRE;
+    RCC->CR &= ~RCC_CR_PLLON;
+    if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, 0U))
+    {
+        return false;
+    }
+    PWR->CR |= PWR_CR_VOS;
+    n = plan->system_hz / 500000U; /* HSI / 16 * N / 2. VCO 112..192 MHz. */
+    RCC->PLLCFGR = 16U | (n << 6U) | (4UL << 24U);
+    RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2)) | RCC_CFGR_PPRE1_DIV2;
+    RCC->CR |= RCC_CR_PLLON;
+    if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY))
+    {
+        return false;
+    }
+    if (!clock_wait(&PWR->CSR, PWR_CSR_VOSRDY, PWR_CSR_VOSRDY))
+    {
+        return false;
+    }
+    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, RCC_CFGR_SWS_PLL))
+    {
+        return false;
+    }
+    set_tick_clock(plan->system_hz);
+    return true;
+}
+
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
 {
-    uint32_t divider = 16000000U;
-    uint32_t prescaler = 0U;
+    spi_clock_plan_t plan;
+    const uint32_t saved_cfgr = RCC->CFGR;
+    const uint32_t saved_acr = FLASH->ACR;
+    const uint32_t saved_adc = ADC->CCR;
     uint32_t cr1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;
     uint32_t start;
     size_t i;
@@ -195,21 +311,17 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         return false;
     }
-    do
-    {
-        divider /= 2U;
-        if (divider == command->hz)
-        {
-            break;
-        }
-        ++prescaler;
-    } while (prescaler < 8U);
-    if ((prescaler >= 8U) || (command->hz > 4000000U))
+    if (!spi_clock_plan(command->hz, &plan))
     {
         return false;
     }
     SPI2->CR1 = 0U;
     GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
+    if ((plan.system_hz != 16000000U) && !boost_clock(&plan))
+    {
+        restore_clock(saved_cfgr, saved_acr, saved_adc);
+        return false;
+    }
     if ((command->mode & 2U) != 0U)
     {
         cr1 |= SPI_CR1_CPOL;
@@ -222,7 +334,7 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         cr1 |= SPI_CR1_LSBFIRST;
     }
-    SPI2->CR1 = cr1 | (prescaler << 3U) | SPI_CR1_SPE;
+    SPI2->CR1 = cr1 | (plan.prescaler << 3U) | SPI_CR1_SPE;
     /* Let the configured idle clock settle before asserting CS. */
     for (i = 0U; i < 16U; ++i)
     {
@@ -265,6 +377,10 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         RCC->APB1RSTR |= RCC_APB1RSTR_SPI2RST;
         RCC->APB1RSTR &= ~RCC_APB1RSTR_SPI2RST;
+    }
+    if (plan.system_hz != 16000000U)
+    {
+        restore_clock(saved_cfgr, saved_acr, saved_adc);
     }
     return ok;
 }

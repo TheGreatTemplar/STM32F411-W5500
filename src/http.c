@@ -1,5 +1,6 @@
 #include "http.h"
 #include "board.h"
+#include "command_store.h"
 #include "config.h"
 #include "spi_console.h"
 #include "w5500.h"
@@ -11,7 +12,7 @@ typedef struct
 {
     char request[APP_REQUEST_CAPACITY];
     char header[384];
-    char body[3072];
+    char body[APP_RESPONSE_CAPACITY];
     const char *reply_body;
     size_t used;
     size_t header_size;
@@ -238,6 +239,40 @@ static bool spi_response(http_client_t *client)
            response(client, 200U, "OK", "application/json", client->body, (size_t)count, "");
 }
 
+static bool commands_response(http_client_t *client, bool save)
+{
+    if (save)
+    {
+        size_t offset;
+        store_error_t error;
+        for (offset = 0U; offset + 4U <= client->used; ++offset)
+        {
+            if (memcmp(client->request + offset, "\r\n\r\n", 4U) == 0)
+            {
+                break;
+            }
+        }
+        offset += 4U;
+        error = offset <= client->used
+                    ? command_store_save(client->request + offset, client->used - offset)
+                    : STORE_INVALID;
+        if (error != STORE_OK)
+        {
+            char text[48];
+            const int count =
+                snprintf(text, sizeof(text), "Command store error: %u\n", (unsigned int)error);
+            return (count > 0) && ((size_t)count < sizeof(text)) &&
+                   response(client, error == STORE_INVALID ? 400U : 409U, "Command Store Error",
+                            "text/plain", text, (size_t)count, "");
+        }
+    }
+    {
+        const size_t size = command_store_json(client->body, sizeof(client->body));
+        return size != 0U && response(client, save ? 202U : 200U, save ? "Accepted" : "OK",
+                                      "application/json", client->body, size, "");
+    }
+}
+
 static bool dispatch(http_client_t *client, http_route_t route, const adc_snapshot_t *adc)
 {
     switch (route)
@@ -251,6 +286,10 @@ static bool dispatch(http_client_t *client, http_route_t route, const adc_snapsh
         return diagnostics_response(client);
     case HTTP_SPI:
         return spi_response(client);
+    case HTTP_COMMANDS:
+        return commands_response(client, false);
+    case HTTP_SAVE_COMMANDS:
+        return commands_response(client, true);
     case HTTP_LED_ON:
         return led_response(client, true);
     case HTTP_LED_OFF:

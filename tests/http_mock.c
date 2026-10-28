@@ -1,3 +1,4 @@
+#include "command_store.h"
 #include "config.h"
 #include "http.h"
 #include "spi_console.h"
@@ -16,17 +17,37 @@ static size_t secondary_input_size[3];
 static size_t secondary_input_offset[3];
 static char secondary_output[3][4096];
 static size_t secondary_output_size[3];
-static char input[2048];
+static char input[APP_REQUEST_CAPACITY];
 static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
-static char output[32768];
+static char output[65536];
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
 static bool led_on;
 static uint32_t led_writes;
 static bool fail_diagnostics;
+static uint32_t save_calls;
+
+store_error_t command_store_save(const char *body, size_t size)
+{
+    (void)body;
+    (void)size;
+    ++save_calls;
+    return STORE_OK;
+}
+
+size_t command_store_json(char *json, size_t capacity)
+{
+    const char *text = "{\"present\":true,\"busy\":false}";
+    if (capacity <= strlen(text))
+    {
+        return 0U;
+    }
+    strcpy(json, text);
+    return strlen(text);
+}
 
 bool w5500_diagnostics(w5500_diag_t *diag)
 {
@@ -399,6 +420,22 @@ int test_entry(void)
         }
         CHECK(spi_calls == 1U); /* Retransmitting HTTP data must not re-execute SPI. */
     }
+
+    prepare("GET /api/commands HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "\"present\":true") != NULL);
+    CHECK(framing_ok());
+    prepare("POST /api/commands HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 4\r\n\r\n1234");
+    fragment_size = 1U;
+    for (i = 0U; i + 1U < input_size; ++i)
+    {
+        http_poll(&adc);
+        CHECK(save_calls == 0U);
+    }
+    pump(&adc);
+    CHECK(save_calls == 1U && spi_calls == 1U);
+    CHECK(strstr(output, "202 Accepted") != NULL);
+    CHECK(framing_ok());
 
     prepare("GET / HTTP/1.1\r\n"); /* Socket 0 holds an incomplete request. */
     strcpy(secondary_input[0], "GET /api/adc HTTP/1.1\r\n\r\n");

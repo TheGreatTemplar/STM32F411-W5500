@@ -1,4 +1,5 @@
 #include "board.h"
+#include "command_store.h"
 #include "config.h"
 #include "http.h"
 #include "w5500.h"
@@ -11,6 +12,7 @@ int main(void)
     bool network_ready;
     board_init();
     network_ready = w5500_init();
+    command_store_init();
     last_retry = board_millis();
     last_sample = board_millis() - APP_SAMPLE_PERIOD_MS;
     for (;;)
@@ -51,6 +53,7 @@ int main(void)
             http_reset();
             network_ready = w5500_init();
         }
+        command_store_poll();
         __WFI();
     }
 }

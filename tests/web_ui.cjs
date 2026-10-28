@@ -13,6 +13,10 @@ let adcOk = true;
 let failDiagnostics = false;
 let failSpi = false;
 let failSpiTransport = false;
+let flashBusy = false;
+const saved = {present: true, ready: true, busy: false, has_saved: true, save_ok: true,
+    error: 0, sequence: 7, settings: {mode: 3, hz: 20000000, lsb: 1, cs_high: 1, format: 'hex'},
+    commands: ['9F 00 00 00', 'AA BB', '', '01 02']};
 function createElement()
 {
     return {textContent: '', className: '', disabled: true, open: false, children: [],
@@ -59,6 +63,16 @@ const context = vm.createContext({
     async fetch(url, options)
     {
         requests.push({url, options});
+        if (url === '/api/commands')
+        {
+            if (options.method === 'POST')
+            {
+                flashBusy = true;
+                return {ok: true, json: async () => ({...saved, busy: true})};
+            }
+            flashBusy = false;
+            return {ok: true, json: async () => ({...saved, busy: flashBusy})};
+        }
         if (url === '/api/spi')
         {
             assert.equal(options.method, 'POST');
@@ -104,6 +118,12 @@ const context = vm.createContext({
 async function test()
 {
     vm.runInContext(source, context);
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('spi-command-1').value, 'AA BB');
+    assert.equal(elements.get('spi-hz').value, '20000000');
+    assert.equal(elements.get('spi-mode-description').textContent, 'CPOL=1 · CPHA=1');
+    assert.equal(elements.get('spi-lsb').checked, true);
+    assert.equal(elements.get('spi-cs-high').checked, true);
     await vm.runInContext('update()', context);
     assert.equal(elements.get('led-state').textContent, 'Выключен');
     assert.equal(elements.get('led-on').disabled, false);
@@ -155,52 +175,75 @@ async function test()
     assert.equal(elements.get('diag-refresh').disabled, false);
     elements.get('diag-close').click();
     assert.equal(elements.get('diagnostics').open, false);
-    for (const id of ['spi-format', 'spi-command', 'spi-hz', 'spi-mode-0', 'spi-mode-1',
+    for (const id of ['spi-format', 'spi-command-0', 'spi-hz', 'spi-mode-0', 'spi-mode-1',
         'spi-mode-2', 'spi-mode-3', 'spi-lsb', 'spi-cs-high'])
     {
         context.document.getElementById(id);
     }
     elements.get('spi-format').value = 'hex';
-    elements.get('spi-command').value = '9F 00 00 00';
+    elements.get('spi-command-0').value = '9F 00 00 00';
     elements.get('spi-hz').value = '1000000';
     elements.get('spi-mode-3').checked = true;
     elements.get('spi-lsb').checked = false;
     elements.get('spi-cs-high').checked = false;
-    elements.get('spi-send').click();
-    assert.equal(elements.get('spi-send').disabled, true);
+    elements.get('spi-send-0').click();
+    assert.equal(elements.get('spi-send-0').disabled, true);
     const beforeSpi = requests.length;
     await vm.runInContext('update()', context);
     assert.equal(requests.length, beforeSpi + 1);
     assert.equal(requests.at(-1).url, '/api/spi');
     assert.equal(requests.at(-1).options.body,
         'bus=2 mode=3 hz=1000000 lsb=0 cs_high=0 format=hex\n9F 00 00 00');
-    assert.equal(elements.get('spi-tx').textContent, '9F 00 00 00');
-    assert.equal(elements.get('spi-rx').textContent, 'EF 40 15 00');
-    assert.equal(elements.get('spi-send').disabled, false);
-    elements.get('spi-command').value = '9';
-    elements.get('spi-send').click();
-    assert.match(elements.get('spi-message').textContent, /HEX/);
-    elements.get('spi-command').value = '00 '.repeat(257);
-    elements.get('spi-send').click();
-    assert.match(elements.get('spi-message').textContent, /256/);
+    assert.equal(elements.get('spi-tx-0').textContent, '9F 00 00 00');
+    assert.equal(elements.get('spi-rx-0').textContent, 'EF 40 15 00');
+    assert.equal(elements.get('spi-send-0').disabled, false);
+    elements.get('spi-command-0').value = '9';
+    elements.get('spi-send-0').click();
+    assert.match(elements.get('spi-message-0').textContent, /HEX/);
+    elements.get('spi-command-0').value = '00 '.repeat(257);
+    elements.get('spi-send-0').click();
+    assert.match(elements.get('spi-message-0').textContent, /256/);
     elements.get('spi-format').value = 'ascii';
-    elements.get('spi-command').value = 'АБВ';
-    elements.get('spi-send').click();
-    assert.match(elements.get('spi-message').textContent, /ASCII/);
-    elements.get('spi-command').value = '*IDN?';
+    elements.get('spi-command-0').value = 'АБВ';
+    elements.get('spi-send-0').click();
+    assert.match(elements.get('spi-message-0').textContent, /ASCII/);
+    elements.get('spi-command-0').value = '*IDN?';
     failSpi = true;
-    elements.get('spi-send').click();
+    elements.get('spi-send-0').click();
     await vm.runInContext('update()', context);
-    assert.match(elements.get('spi-message').textContent, /Invalid SPI/);
+    assert.match(elements.get('spi-message-0').textContent, /Invalid SPI/);
     failSpi = false;
     failSpiTransport = true;
-    elements.get('spi-send').click();
+    elements.get('spi-send-0').click();
     await vm.runInContext('update()', context);
-    assert.match(elements.get('spi-message').textContent, /могла выполниться/);
+    assert.match(elements.get('spi-message-0').textContent, /могла выполниться/);
     const afterFailure = requests.filter((r) => r.url === '/api/spi').length;
     await vm.runInContext('update()', context);
     assert.equal(requests.filter((r) => r.url === '/api/spi').length, afterFailure);
-    console.log('Web UI: LED, diagnostics, SPI validation, TX/RX, queued requests and no automatic SPI retry passed');
+    failSpiTransport = false;
+    elements.get('spi-format').value = 'hex';
+    elements.get('spi-command-0').value = '9F 00';
+    elements.get('spi-command-1').value = 'AA BB';
+    elements.get('spi-send-1').click();
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('spi-rx-1').textContent, 'EF 40 15 00');
+    assert.equal(elements.get('spi-command-0').value, '9F 00');
+    const spiCount = requests.filter((r) => r.url === '/api/spi').length;
+    elements.get('store-save').click();
+    await vm.runInContext('update()', context);
+    assert.equal(requests.at(-1).url, '/api/commands');
+    assert.match(requests.at(-1).options.body, /lengths=5,5,0,5\n9F 00AA BB01 02$/);
+    assert.equal(elements.get('store-save').disabled, true);
+    vm.runInContext('nextStorePoll = 0', context);
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('store-save').disabled, false);
+    assert.equal(requests.filter((r) => r.url === '/api/spi').length, spiCount);
+    assert.equal(elements.get('spi-command-0').value, '9F 00');
+    elements.get('spi-command-0').value = '55';
+    elements.get('spi-command-0').input();
+    vm.runInContext('showStore(' + JSON.stringify(saved) + ', true)', context);
+    assert.equal(elements.get('spi-command-0').value, '55');
+    console.log('Web UI: four command slots, independent RX, Flash restore/save, early edits, LED, diagnostics, SPI validation and no automatic SPI retry passed');
 }
 
 test().catch((error) =>
