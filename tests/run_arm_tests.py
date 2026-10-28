@@ -37,6 +37,16 @@ def call(uc, address):
 
 
 uc, symbols = load_image(root / "build/adc_web.axf")
+uc.mem_map(0x40020000, 0x3000)
+uc.mem_write(0x40020814, (0).to_bytes(4, "little"))
+assert call(uc, symbols["board_led_is_on"]) == 1
+uc.mem_write(0x40020814, (1 << 13).to_bytes(4, "little"))
+assert call(uc, symbols["board_led_is_on"]) == 0
+for on, expected in [(1, 1 << 29), (0, 1 << 13)]:
+    uc.reg_write(UC_ARM_REG_R0, on)
+    call(uc, symbols["board_led"])
+    assert int.from_bytes(uc.mem_read(0x40020818, 4), "little") == expected
+print("PC13 LED: active-low GPIO readback and BSRR writes passed")
 requests = [
     (b"GET / HTTP/1.1\r\nHost: board\r\n\r\n", 1),
     (b"GET /api/adc HTTP/1.1\r\nHost: board\r\n\r\n", 2),
@@ -48,6 +58,17 @@ requests = [
     (b"GET / HTTP/1.1\r\nX: a\x00b\r\n\r\n", 4),
     (b"GET / HTTP/1.1\r\nX: a\x7fb\r\n\r\n", 4),
     (b"\r\n\r\n", 4),
+    (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 0\r\n\r\n", 6),
+    (b"POST /api/led/off HTTP/1.1\r\nx-device-control: 1\r\ncontent-length: 0\r\n\r\n", 7),
+    (b"GET /api/led/on HTTP/1.1\r\n\r\n", 8),
+    (b"GET /api/led/off HTTP/1.1\r\n\r\n", 8),
+    (b"POST /api/led/on HTTP/1.1\r\n\r\n", 4),
+    (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 0\r\n\r\n", 4),
+    (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\nTransfer-Encoding: chunked\r\n\r\n", 4),
+    (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 1\r\n\r\nx", 4),
+    (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 0\r\nContent-Length: 0\r\n\r\n", 4),
+    (b"POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\n\r\nx", 4),
+    (b"POST /api/led/onX HTTP/1.1\r\nX-Device-Control: 1\r\n\r\n", 5),
 ]
 count = 0
 for request, expected in requests:
@@ -57,7 +78,7 @@ for request, expected in requests:
     result = call(uc, symbols["http_parse"])
     assert result == expected, (request, result, expected)
     count += 1
-for request, _ in requests[:3]:
+for request, _ in requests[:3] + requests[10:12]:
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
         uc.reg_write(UC_ARM_REG_R0, 0x20010000)
@@ -72,4 +93,4 @@ print("W5500 mock: static config, listen, RX/TX ring wrap, timeouts and recovery
 uc, symbols = load_image(root / "build/http_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"HTTP integration mock failed at C source line {result}"
-print("HTTP integration: HTML/JSON framing, fragmented headers, 404/405/431, ADC fault and connection recovery passed")
+print("HTTP integration: HTML/JSON framing, 404/405/431, ADC, LED commands and connection recovery passed")

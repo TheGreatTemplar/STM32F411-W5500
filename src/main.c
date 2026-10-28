@@ -47,10 +47,6 @@ int main(void)
             http_reset();
             network_ready = w5500_init();
         }
-        /* Fast blink: SPI/chip fault; slow blink: no link; steady: ready. */
-        board_led(network_ready && w5500_healthy() && w5500_link()
-                      ? true
-                      : ((now / (w5500_healthy() ? 500U : 100U)) & 1U) != 0U);
         __WFI();
     }
 }

@@ -83,6 +83,11 @@ void board_led(bool on)
     GPIOC->BSRR = 1UL << (on ? 29U : 13U);
 }
 
+bool board_led_is_on(void)
+{
+    return (GPIOC->ODR & (1UL << 13U)) == 0U;
+}
+
 void board_w5500_reset(void)
 {
     GPIOB->BSRR = 1UL << 18U;

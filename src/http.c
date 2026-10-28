@@ -20,7 +20,7 @@ void http_reset(void)
 }
 
 static bool response(unsigned int status, const char *reason, const char *type, const char *body,
-                     size_t size)
+                     size_t size, const char *extra_headers)
 {
     char header[384];
     const int count =
@@ -31,7 +31,7 @@ static bool response(unsigned int status, const char *reason, const char *type, 
                  "Content-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; "
                  "style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'\r\n"
                  "%s\r\n",
-                 status, reason, type, (unsigned long)size, status == 405U ? "Allow: GET\r\n" : "");
+                 status, reason, type, (unsigned long)size, extra_headers);
     size_t offset = 0U;
     if ((count <= 0) || ((size_t)count >= sizeof(header)) || !w5500_send(header, (size_t)count))
     {
@@ -60,14 +60,22 @@ static bool adc_response(const adc_snapshot_t *adc)
         snprintf(json, sizeof(json),
                  "{\"raw\":[%u,%u],\"mv\":[%lu,%lu],\"vref_mv\":%u,"
                  "\"adc_ok\":%s,\"link\":%s,\"link_speed_mbps\":%lu,\"sample_ms\":%lu,"
-                 "\"sample_count\":%lu,\"uptime_ms\":%lu}",
+                 "\"sample_count\":%lu,\"uptime_ms\":%lu,\"led_on\":%s}",
                  (unsigned int)adc->raw[0], (unsigned int)adc->raw[1], (unsigned long)mv0,
                  (unsigned long)mv1, APP_ADC_VREF_MV, adc->valid ? "true" : "false",
                  link_speed_mbps != 0U ? "true" : "false", (unsigned long)link_speed_mbps,
                  (unsigned long)adc->sample_ms, (unsigned long)adc->sample_count,
-                 (unsigned long)board_millis());
+                 (unsigned long)board_millis(), board_led_is_on() ? "true" : "false");
     return (count > 0) && ((size_t)count < sizeof(json)) &&
-           response(200U, "OK", "application/json", json, (size_t)count);
+           response(200U, "OK", "application/json", json, (size_t)count, "");
+}
+
+static bool led_response(bool on)
+{
+    const char *json;
+    board_led(on);
+    json = board_led_is_on() ? "{\"led_on\":true}" : "{\"led_on\":false}";
+    return response(200U, "OK", "application/json", json, strlen(json), "");
 }
 
 static bool dispatch(http_route_t route, const adc_snapshot_t *adc)
@@ -75,16 +83,25 @@ static bool dispatch(http_route_t route, const adc_snapshot_t *adc)
     switch (route)
     {
     case HTTP_PAGE:
-        return response(200U, "OK", "text/html; charset=utf-8", web_page, sizeof(web_page) - 1U);
+        return response(200U, "OK", "text/html; charset=utf-8", web_page, sizeof(web_page) - 1U,
+                        "");
     case HTTP_ADC:
         return adc_response(adc);
+    case HTTP_LED_ON:
+        return led_response(true);
+    case HTTP_LED_OFF:
+        return led_response(false);
     case HTTP_NOT_FOUND:
-        return response(404U, "Not Found", "text/plain", "Not found\n", 10U);
+        return response(404U, "Not Found", "text/plain", "Not found\n", 10U, "");
     case HTTP_METHOD_NOT_ALLOWED:
-        return response(405U, "Method Not Allowed", "text/plain", "GET only\n", 9U);
+        return response(405U, "Method Not Allowed", "text/plain", "GET only\n", 9U,
+                        "Allow: GET\r\n");
+    case HTTP_POST_REQUIRED:
+        return response(405U, "Method Not Allowed", "text/plain", "POST only\n", 10U,
+                        "Allow: POST\r\n");
     case HTTP_INCOMPLETE:
     case HTTP_BAD_REQUEST:
-        return response(400U, "Bad Request", "text/plain", "Bad request\n", 12U);
+        return response(400U, "Bad Request", "text/plain", "Bad request\n", 12U, "");
     }
     return false;
 }
@@ -149,7 +166,7 @@ void http_poll(const adc_snapshot_t *adc)
             if (used == sizeof(request))
             {
                 (void)response(431U, "Request Header Fields Too Large", "text/plain",
-                               "Header too large\n", 17U);
+                               "Header too large\n", 17U, "");
             }
             w5500_close();
             http_reset();

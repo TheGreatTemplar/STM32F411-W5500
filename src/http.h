@@ -12,7 +12,10 @@ typedef enum
     HTTP_ADC,
     HTTP_NOT_FOUND,
     HTTP_BAD_REQUEST,
-    HTTP_METHOD_NOT_ALLOWED
+    HTTP_METHOD_NOT_ALLOWED,
+    HTTP_LED_ON,
+    HTTP_LED_OFF,
+    HTTP_POST_REQUIRED
 } http_route_t;
 
 typedef struct

@@ -9,10 +9,26 @@ static char input[2048];
 static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
-static char output[10000];
+static char output[16384];
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
+static bool led_on;
+static uint32_t led_writes;
+
+void board_led(bool on);
+bool board_led_is_on(void);
+
+void board_led(bool on)
+{
+    led_on = on;
+    ++led_writes;
+}
+
+bool board_led_is_on(void)
+{
+    return led_on;
+}
 
 uint32_t board_millis(void);
 uint32_t board_millis(void)
@@ -136,6 +152,7 @@ int test_entry(void)
     CHECK(strstr(output, "\"raw\":[0,4095]") != NULL);
     CHECK(strstr(output, "\"mv\":[0,3300]") != NULL);
     CHECK(strstr(output, "\"adc_ok\":true") != NULL);
+    CHECK(strstr(output, "\"led_on\":false") != NULL);
     CHECK(strstr(output, "\"link\":true,\"link_speed_mbps\":100") != NULL);
     CHECK(framing_ok());
     CHECK(state == 0x18U);
@@ -203,5 +220,44 @@ int test_entry(void)
     CHECK(strstr(output, "431 Request Header Fields Too Large") != NULL);
     CHECK(state == W5500_CLOSED);
     CHECK(framing_ok());
+    prepare("POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 0\r\n\r\n");
+    fragment_size = 1U;
+    for (i = 0U; i < input_size; ++i)
+    {
+        http_poll(&adc);
+        CHECK(led_writes == (i + 1U == input_size ? 1U : 0U));
+    }
+    CHECK(led_on && led_writes == 1U);
+    CHECK(strstr(output, "{\"led_on\":true}") != NULL);
+    CHECK(framing_ok());
+
+    prepare("GET /api/adc HTTP/1.1\r\n\r\n");
+    http_poll(&adc);
+    CHECK(strstr(output, "\"led_on\":true") != NULL);
+    CHECK(led_on && led_writes == 1U);
+
+    prepare("GET /api/led/off HTTP/1.1\r\n\r\n");
+    http_poll(&adc);
+    CHECK(strstr(output, "405 Method Not Allowed") != NULL);
+    CHECK(strstr(output, "Allow: POST\r\n") != NULL);
+    CHECK(led_on && led_writes == 1U);
+
+    prepare("POST /api/led/off HTTP/1.1\r\n\r\n");
+    http_poll(&adc);
+    CHECK(strstr(output, "400 Bad Request") != NULL);
+    CHECK(led_on && led_writes == 1U);
+
+    prepare("POST /api/led/off HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 1\r\n\r\nx");
+    http_poll(&adc);
+    CHECK(strstr(output, "400 Bad Request") != NULL);
+    CHECK(led_on && led_writes == 1U);
+
+    prepare("POST /api/led/off HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 0\r\n\r\n");
+    http_poll(&adc);
+    CHECK(!led_on && led_writes == 2U);
+    CHECK(strstr(output, "{\"led_on\":false}") != NULL);
+    CHECK(framing_ok());
+    http_reset();
+    CHECK(!led_on && led_writes == 2U);
     return 0;
 }

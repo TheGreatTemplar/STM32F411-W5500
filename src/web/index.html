@@ -28,6 +28,16 @@
         .raw { color: #b6c6d3; font-variant-numeric: tabular-nums; }
         .details { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 16px 36px; color: #a6b7c7; font-size: 14px; }
         .details strong { display: block; color: #e9eff5; margin-top: 5px; font-weight: 500; }
+        .led-control { margin-top: 20px; padding: 24px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
+        .led-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+        #led-state { color: #a6b7c7; }
+        #led-state.on { color: #89b6ff; }
+        .buttons { display: flex; gap: 12px; margin-top: 20px; }
+        button { padding: 12px 30px; border: 1px solid #476273; border-radius: 10px; background: #24394d; color: #e9eff5; font: inherit; font-weight: 600; cursor: pointer; }
+        #led-on { background: #2763ab; border-color: #478ddd; }
+        button:hover { filter: brightness(1.15); }
+        button:disabled { opacity: 0.45; cursor: wait; }
+        #led-message { font-size: 13px; min-height: 21px; margin: 12px 0 0; }
         footer { margin-top: 24px; font-size: 13px; }
     </style>
 </head>
@@ -57,6 +67,11 @@
             <div>Измерений<strong id="samples">—</strong></div>
             <div>Опорное напряжение<strong id="vref">—</strong></div>
         </section>
+        <section class="led-control" aria-label="Управление светодиодом">
+            <div class="led-header"><h2>Синий светодиод · PC13</h2><span id="led-state" role="status">Состояние: —</span></div>
+            <div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div>
+            <p id="led-message" role="status"></p>
+        </section>
         <footer>
             <p>Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.</p>
             <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
@@ -64,6 +79,31 @@
     </main>
     <script>
         const get = (id) => document.getElementById(id);
+        let pendingLed = null;
+        let ledBusy = false;
+        function showLed(on)
+        {
+            get('led-state').textContent = on ? 'Включён' : 'Выключен';
+            get('led-state').className = on ? 'on' : '';
+        }
+        function enableLedButtons(enabled)
+        {
+            get('led-on').disabled = !enabled;
+            get('led-off').disabled = !enabled;
+        }
+        function queueLed(on)
+        {
+            if (ledBusy)
+            {
+                return;
+            }
+            pendingLed = on;
+            ledBusy = true;
+            enableLedButtons(false);
+            get('led-message').textContent = 'Отправка команды…';
+        }
+        get('led-on').addEventListener('click', () => queueLed(true));
+        get('led-off').addEventListener('click', () => queueLed(false));
         get('address').textContent = location.host + ' · —';
         function clearReadings()
         {
@@ -78,14 +118,37 @@
         {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 1500);
+            const command = pendingLed;
+            pendingLed = null;
+            let commandConfirmed = false;
+            let haveFreshState = false;
             try
             {
+                if (command !== null)
+                {
+                    const reply = await fetch(command ? '/api/led/on' : '/api/led/off',
+                        {method: 'POST', headers: {'X-Device-Control': '1'}, signal: controller.signal});
+                    if (!reply.ok)
+                    {
+                        throw new Error('HTTP ' + reply.status);
+                    }
+                    const result = await reply.json();
+                    showLed(result.led_on);
+                    commandConfirmed = true;
+                    get('led-message').textContent = 'Команда выполнена';
+                }
                 const response = await fetch('/api/adc', {cache: 'no-store', signal: controller.signal});
                 if (!response.ok)
                 {
                     throw new Error('HTTP ' + response.status);
                 }
                 const data = await response.json();
+                haveFreshState = true;
+                showLed(data.led_on);
+                if (!ledBusy)
+                {
+                    enableLedButtons(true);
+                }
                 const speed = data.link && (data.link_speed_mbps === 10 || data.link_speed_mbps === 100)
                     ? data.link_speed_mbps + ' Мбит/с' : 'нет линка';
                 get('address').textContent = location.host + ' · ' + speed;
@@ -111,6 +174,13 @@
                 if (!error.message.startsWith('АЦП'))
                 {
                     get('address').textContent = location.host + ' · —';
+                    get('led-state').textContent = 'Состояние: —';
+                    get('led-state').className = '';
+                    enableLedButtons(false);
+                }
+                if (command !== null && !commandConfirmed)
+                {
+                    get('led-message').textContent = 'Нет подтверждения команды. Проверь связь.';
                 }
                 get('status').textContent = error.message.startsWith('АЦП') ? error.message : 'Нет свежих данных';
                 get('status').className = 'bad';
@@ -118,6 +188,14 @@
             finally
             {
                 clearTimeout(timeout);
+                if (command !== null)
+                {
+                    ledBusy = false;
+                }
+                if (commandConfirmed && haveFreshState)
+                {
+                    enableLedButtons(true);
+                }
                 setTimeout(update, 250);
             }
         }
