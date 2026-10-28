@@ -62,9 +62,18 @@
         .command-heading { display: grid; grid-template-columns: minmax(0,42%) minmax(0,1fr); gap: 16px; align-items: center; height: 44px; }
         .command-heading label { font-size: 14px; line-height: 20px; }
         .command-message { height: 32px; min-height: 0; line-height: 20px; font-size: 13px; margin: 0; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .library-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
-        .library-controls input, .library-controls select { max-width: 100%; min-width: 160px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 6px 8px; font: inherit; }
-        .library-controls button { padding: 8px 14px; }
+        .library-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; width: min(290px,100%); height: 40px; margin: 12px 0; }
+        .library-controls button { min-width: 0; height: 40px; padding: 6px 8px; white-space: nowrap; }
+        #command-library { width: min(680px,calc(100% - 24px)); height: 440px; overflow: auto; scrollbar-gutter: stable; }
+        .library-header { display: grid; grid-template-columns: minmax(0,1fr) 110px; align-items: center; gap: 12px; height: 44px; }
+        .library-header h2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .library-header button { height: 40px; padding: 6px 8px; white-space: nowrap; }
+        .library-fields { display: grid; gap: 12px; margin: 18px 0; }
+        .library-fields label { display: grid; grid-template-columns: 80px minmax(0,1fr); gap: 12px; height: 40px; }
+        .library-fields input, .library-fields select { width: 100%; min-width: 0; height: 40px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 6px 8px; font: inherit; }
+        .library-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: 40px; gap: 10px; }
+        .library-actions button { min-width: 0; padding: 6px 8px; font-size: 14px; white-space: nowrap; }
+        #library-message { height: 64px; line-height: 20px; padding: 6px 10px; margin: 16px 0 0; overflow: auto; font-size: 13px; overflow-wrap: anywhere; }
         .rtc-title { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
         @media (max-width: 520px) { .command-heading { grid-template-columns: minmax(0,1fr); grid-template-rows: 40px 32px; gap: 0; height: 76px; } }
         .store-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 16px; margin-bottom: 16px; height: 44px; }
@@ -167,12 +176,8 @@
             <p class="hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
             <p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p>
             <div class="library-controls">
-                <label>Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="64">Новый набор</option></select></label>
-                <label>Имя<input type="text" id="library-name" maxlength="64" value="Default" aria-label="Имя набора, до 32 символов"></label>
-                <button type="button" id="library-load" disabled>Загрузить</button>
-                <button type="button" id="store-save" disabled>Сохранить</button>
-                <button type="button" id="library-new" disabled>Сохранить как</button>
-                <button type="button" id="library-delete" disabled>Удалить</button>
+                <button type="button" id="library-open-load">Загрузить</button>
+                <button type="button" id="library-open-save">Сохранить</button>
             </div>
             <div class="store-bar"><span id="store-status" role="status">Проверка W25Q64JV…</span><span id="library-status" class="hint" role="status"></span></div>
             <div class="command-card">
@@ -205,6 +210,20 @@
             <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
         </footer>
     </main>
+    <dialog id="command-library" aria-labelledby="library-title">
+        <div class="library-header"><h2 id="library-title">Библиотека команд</h2><button type="button" id="library-close">Закрыть</button></div>
+        <div class="library-fields">
+            <label>Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="64">Новый набор</option></select></label>
+            <label>Имя<input type="text" id="library-name" maxlength="64" value="Default" aria-label="Имя набора, до 32 символов"></label>
+        </div>
+        <div class="library-actions">
+            <button type="button" id="library-load" disabled>Загрузить</button>
+            <button type="button" id="store-save" disabled>Сохранить</button>
+            <button type="button" id="library-delete" disabled>Удалить</button>
+            <button type="button" id="library-new" disabled>Сохранить как</button>
+        </div>
+        <p id="library-message" role="status">Проверка W25Q64JV…</p>
+    </dialog>
     <dialog id="diagnostics" aria-labelledby="diag-title">
         <div class="led-header"><h2 id="diag-title">Диагностика W5500</h2><button type="button" id="diag-close">Закрыть</button></div>
         <p id="diag-message" role="status">Ожидание данных…</p>
@@ -224,6 +243,7 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Библиотека команд": "Command library",
             "Монитор STM32F411": "STM32F411 Monitor",
             "команда принята в очередь": "command queued",
             "неожиданное значение": "unexpected value",
@@ -427,6 +447,7 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Библиотека команд": "コマンドライブラリ",
             "Монитор STM32F411": "STM32F411 モニター",
             "команда принята в очередь": "コマンドをキューに追加しました",
             "неожиданное значение": "想定外の値",
@@ -650,6 +671,11 @@
             if (element.firstChild)
             {
                 originalText.set(element.firstChild, raw);
+            }
+            if (element.id === 'store-status')
+            {
+                get('library-message').className = element.className;
+                setText(get('library-message'), raw);
             }
         }
         function applyLanguage(next)
@@ -1160,6 +1186,15 @@
             wakeUpdate();
         }
         get('library-select').addEventListener('change', libraryButtons);
+        function openLibrary(focusId)
+        {
+            libraryButtons();
+            get('command-library').showModal();
+            get(focusId).focus();
+        }
+        get('library-open-load').addEventListener('click', () => openLibrary('library-select'));
+        get('library-open-save').addEventListener('click', () => openLibrary('library-name'));
+        get('library-close').addEventListener('click', () => get('command-library').close());
         get('library-name').addEventListener('input', () =>
         {
             draftDirty = true;
@@ -1422,6 +1457,7 @@
                         draftDirty = false;
                         showStore(result, true);
                         selectedSet = result.id;
+                        get('command-library').close();
                     }
                     else
                     {

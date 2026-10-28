@@ -91,6 +91,10 @@ function createElement()
         {
             this.open = true;
         },
+        focus()
+        {
+            this.focused = true;
+        },
         close()
         {
             this.open = false;
@@ -308,6 +312,18 @@ async function test()
     assert.equal(elements.get('spi-mode-description').textContent, 'CPOL=1 · CPHA=1');
     assert.equal(elements.get('spi-lsb').checked, true);
     assert.equal(elements.get('spi-cs-high').checked, true);
+    const beforeDialog = requests.length;
+    elements.get('library-open-load').click();
+    assert.equal(elements.get('command-library').open, true);
+    assert.equal(elements.get('library-select').focused, true);
+    assert.equal(requests.length, beforeDialog);
+    elements.get('library-close').click();
+    assert.equal(elements.get('command-library').open, false);
+    elements.get('library-open-save').click();
+    assert.equal(elements.get('command-library').open, true);
+    assert.equal(elements.get('library-name').focused, true);
+    assert.equal(elements.get('library-message').textContent, elements.get('store-status').textContent);
+    elements.get('library-close').click();
     await vm.runInContext('update()', context); // Initial library catalog.
     await vm.runInContext('update()', context);
     assert.equal(elements.get('led-state').textContent, 'Выключен');
@@ -620,6 +636,8 @@ async function test()
     elements.get('library-new').click();
     await vm.runInContext('update()', context);
     assert.match(elements.get('store-status').textContent, /Такое имя уже существует/);
+    assert.equal(elements.get('library-message').textContent, elements.get('store-status').textContent);
+    assert.equal(elements.get('library-message').className, 'input-error');
     assert.equal(vm.runInContext('storeWaiting', context), false);
     const beforeLongName = requests.length;
     elements.get('library-name').value = '日'.repeat(33);
@@ -635,6 +653,7 @@ async function test()
     const beforeLoadSpi = requests.filter((r) => r.url === '/api/spi').length;
     elements.get('library-load').click();
     await vm.runInContext('update()', context);
+    assert.equal(elements.get('command-library').open, false);
     assert.equal(elements.get('library-name').value, 'Default');
     assert.equal(elements.get('spi-command-0').value, '9F 00 00 00');
     assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeLoadSpi);
