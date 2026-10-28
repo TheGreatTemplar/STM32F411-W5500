@@ -84,6 +84,8 @@ requests = [
     (spi_request.replace(b"/api/spi", b"/api/rtc"), 14),
     (spi_request.replace(b"/api/spi", b"/api/commands"), 12),
     (spi_request, 10),
+    (spi_request.replace(b"/api/spi", b"/api/i2c"), 17),
+    (b"GET /api/i2c HTTP/1.1\r\n\r\n", 8),
     (spi_request[:-1], 0),
     (b"GET /api/spi HTTP/1.1\r\n\r\n", 8),
     (b"POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 9999999999999999\r\n\r\n", 4),
@@ -97,7 +99,7 @@ for request, expected in requests:
     assert result == expected, (request, result, expected)
     count += 1
 for request, route in requests:
-    if route not in {1, 2, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16}:
+    if route not in {1, 2, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17}:
         continue
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
@@ -213,6 +215,8 @@ uc.hook_del(hook)
 assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 28
 assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
 print('SPI console: 60 mode/rate configurations, PLL switching/restoration, register loopback, limits and invalid input passed')
+from i2c_register_tests import run as run_i2c_register_tests
+run_i2c_register_tests(uc, symbols, call)
 uc, symbols = load_image(root / "build/w5500_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"W5500 mock failed at C source line {result}"

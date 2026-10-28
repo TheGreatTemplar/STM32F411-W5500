@@ -1,6 +1,7 @@
 #include "command_store.h"
 #include "config.h"
 #include "http.h"
+#include "i2c_console.h"
 #include "rtc.h"
 #include "spi_console.h"
 #include "w5500.h"
@@ -172,6 +173,21 @@ bool w5500_link(void)
 uint32_t w5500_link_speed_mbps(void)
 {
     return link_speed_mbps;
+}
+
+i2c_error_t board_i2c_console(const i2c_command_t *command, uint8_t rx[256], i2c_result_t *result)
+{
+    uint32_t i;
+    ++spi_calls;
+    result->tx_done = (uint32_t)command->size;
+    result->rx_done = command->read_size;
+    result->duration_us = 123U;
+    result->actual_hz = 100000U;
+    for (i = 0U; i < command->read_size; ++i)
+    {
+        rx[i] = (uint8_t)i;
+    }
+    return fail_console ? I2C_NACK : I2C_OK;
 }
 
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
@@ -561,6 +577,45 @@ int test_entry(void)
     }
     pump(&adc);
     CHECK(library_name_ok && strstr(output, "202 Accepted") != NULL && framing_ok());
+
+    {
+        const char body[] = "bus=1 hz=100000 addr=80 op=2 read=2 format=hex\n00 10";
+        const uint32_t calls = spi_calls;
+        prepare("GET /api/i2c HTTP/1.1\r\n\r\n");
+        pump(&adc);
+        CHECK(strstr(output, "405 Method Not Allowed") != NULL && spi_calls == calls);
+        prepare("GET / HTTP/1.1\r\n\r\n");
+        input_size = (size_t)snprintf(
+            input, sizeof(input),
+            "POST /api/i2c HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
+            (unsigned long)(sizeof(body) - 1U), body);
+        fragment_size = 1U;
+        fail_console = false;
+        for (i = 0U; i + 1U < input_size; ++i)
+        {
+            http_poll(&adc);
+            CHECK(spi_calls == calls);
+        }
+        pump(&adc);
+        CHECK(spi_calls == calls + 1U && framing_ok());
+        CHECK(strstr(output, "\"bus\":1") != NULL && strstr(output, "\"tx\":\"0010\"") != NULL);
+        CHECK(strstr(output, "\"rx\":\"0001\"") != NULL);
+        for (i = 0U; i < 10U; ++i)
+        {
+            http_poll(&adc);
+        }
+        CHECK(spi_calls == calls + 1U);
+        prepare("GET / HTTP/1.1\r\n\r\n");
+        input_size = (size_t)snprintf(
+            input, sizeof(input),
+            "POST /api/i2c HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
+            (unsigned long)(sizeof(body) - 1U), body);
+        fail_console = true;
+        pump(&adc);
+        CHECK(spi_calls == calls + 2U && strstr(output, "409 I2C Error") != NULL);
+        CHECK(strstr(output, "\"error\":1") != NULL && framing_ok());
+        fail_console = false;
+    }
 
     prepare("GET / HTTP/1.1\r\n"); /* Socket 0 holds an incomplete request. */
     strcpy(secondary_input[0], "GET /api/adc HTTP/1.1\r\n\r\n");

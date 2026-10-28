@@ -163,6 +163,7 @@ http_route_t http_parse(const char *request, size_t size)
     if (((path_size == 11U) && (memcmp(path, "/api/led/on", 11U) == 0)) ||
         ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)) ||
         ((path_size == 8U) && (memcmp(path, "/api/spi", 8U) == 0)) ||
+        ((path_size == 8U) && (memcmp(path, "/api/i2c", 8U) == 0)) ||
         ((path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0)) ||
         ((path_size == 12U) && (memcmp(path, "/api/library", 12U) == 0)) ||
         ((path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0)))
@@ -197,6 +198,10 @@ http_route_t http_parse(const char *request, size_t size)
             if ((path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0))
             {
                 return HTTP_SET_RTC;
+            }
+            if (path_size == 8U && memcmp(path, "/api/i2c", 8U) == 0)
+            {
+                return HTTP_I2C;
             }
             return path_size == 8U ? HTTP_SPI : HTTP_SAVE_COMMANDS;
         }

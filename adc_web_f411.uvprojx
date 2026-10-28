@@ -406,6 +406,11 @@
               <FilePath>.\src\startup_stm32f411.s</FilePath>
             </File>
             <File>
+              <FileName>board_i2c.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\board_i2c.c</FilePath>
+            </File>
+            <File>
               <FileName>board.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\src\board.c</FilePath>
@@ -436,22 +441,32 @@
           <GroupName>HTTP</GroupName>
           <Files>
             <File>
+              <FileName>i2c_console.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\i2c_console.h</FilePath>
+            </File>
+            <File>
+              <FileName>i2c_console.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\i2c_console.c</FilePath>
+            </File>
+            <File>
               <FileName>spi_console.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\src\spi_console.c</FilePath>
             </File>
             <File>
-                <FileName>rtc.c</FileName>
-                <FileType>1</FileType>
-                <FilePath>.\src\rtc.c</FilePath>
-              </File>
-              <File>
-                <FileName>rtc.h</FileName>
-                <FileType>5</FileType>
-                <FilePath>.\src\rtc.h</FilePath>
-              </File>
-              <File>
-                <FileName>command_store.c</FileName>
+              <FileName>rtc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\rtc.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtc.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\rtc.h</FilePath>
+            </File>
+            <File>
+              <FileName>command_store.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\src\command_store.c</FilePath>
             </File>

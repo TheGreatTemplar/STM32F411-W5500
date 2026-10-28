@@ -20,6 +20,7 @@ let adcOk = true;
 let failDiagnostics = false;
 let failSpi = false;
 let failSpiTransport = false;
+let failI2c = false;
 let flashBusy = false;
 let failRtc = false;
 let rtcState = {ready: true, set: true, lse_ready: true, error: 0, datetime: '2032-02-29T12:34:56'};
@@ -151,8 +152,12 @@ const context = vm.createContext({
             let index = 0;
             return {nextNode: () => nodes[index++] || null};
         },
-        querySelectorAll()
+        querySelectorAll(selector)
         {
+            if (selector === '.spi-only' || selector === '.i2c-only')
+            {
+                return [];
+            }
             return [...elements.values()].filter((element) => element.hasAttribute('aria-label') || element.hasAttribute('title'));
         },
         getElementById(id)
@@ -186,7 +191,7 @@ const context = vm.createContext({
             if (!options.method || options.body.startsWith('list '))
             {
                 const offset = options.method ? Number(options.body.trim().split(' ')[1]) : 0;
-                const sets = [...libraryRecords].map(([id, item]) => ({id, name: item.name}));
+                const sets = [...libraryRecords].map(([id, item]) => ({id, name: item.name, bus: item.settings.bus || 2}));
                 return {ok: true, json: async () => ({scanning: false, used: sets.length, blocked: 0,
                     next: pagedCatalog && offset + 8 < 64 ? offset + 8 : null,
                     sets: pagedCatalog ? sets.filter((item) => item.id >= offset && item.id < offset + 8) : sets})};
@@ -210,7 +215,19 @@ const context = vm.createContext({
                         ++id;
                     }
                 }
-                Object.assign(saved, {id, name, has_saved: true});
+                const snapshot = new TextDecoder().decode(bytes.slice(first + Number(parts[2]) + 2));
+                const [header, lengths] = snapshot.split('\n');
+                const fields = Object.fromEntries(header.split(' ').map(item => item.split('=')));
+                const settings = fields.bus === '1' ? {bus: 1, hz: Number(fields.hz), address: Number(fields.addr), operation: Number(fields.op), read_size: Number(fields.read), format: fields.format} :
+                    {bus: 2, mode: Number(fields.mode), hz: Number(fields.hz), lsb: Number(fields.lsb), cs_high: Number(fields.cs_high), format: fields.format};
+                let payload = snapshot.slice(header.length + lengths.length + 2);
+                const commands = lengths.slice(8).split(',').map(length =>
+                {
+                    const command = payload.slice(0, Number(length));
+                    payload = payload.slice(Number(length));
+                    return command;
+                });
+                Object.assign(saved, {id, name, has_saved: true, settings, commands});
                 libraryRecords.set(id, structuredClone(saved));
                 flashBusy = true;
                 return {ok: true, json: async () => ({...saved, busy: true})};
@@ -252,6 +269,18 @@ const context = vm.createContext({
             }
             flashBusy = false;
             return {ok: true, json: async () => ({...saved, busy: flashBusy})};
+        }
+        if (url === '/api/i2c')
+        {
+            assert.equal(options.method, 'POST');
+            assert.equal(options.headers['X-Device-Control'], '1');
+            const [header, text] = options.body.split('\n');
+            const fields = Object.fromEntries(header.split(' ').map(item => item.split('=')));
+            const tx = fields.format === 'ascii' ? Buffer.from(text, 'ascii').toString('hex').toUpperCase() : text.replace(/\s/g, '').toUpperCase();
+            return {ok: !failI2c, status: failI2c ? 409 : 200, json: async () =>
+                ({bus: 1, address: Number(fields.addr), operation: Number(fields.op), hz: 100000,
+                    count: tx.length / 2, read_count: failI2c ? 0 : Number(fields.read), transfer_us: 123,
+                    error: failI2c ? 1 : 0, tx, rx: failI2c ? '' : 'A0'.repeat(Number(fields.read))})};
         }
         if (url === '/api/spi')
         {
@@ -610,7 +639,7 @@ async function test()
     assert.equal(context.document.title, 'STM32F411 モニター');
     assert.equal(elements.get('spi-send-0').textContent, '送信');
     assert.match(elements.get('spi-message-0').textContent, /送信済み/);
-    assert.equal(elements.get('library-select').children[1].textContent, 'Default');
+    assert.equal(elements.get('library-select').children[1].textContent, 'SPI · Default');
     elements.get('lang-ru').click();
     context.localStorage = {setItem()
     {
@@ -655,7 +684,7 @@ async function test()
     await vm.runInContext('update()', context);
     assert.equal(elements.get('command-library').open, false);
     assert.equal(elements.get('library-name').value, 'Default');
-    assert.equal(elements.get('spi-command-0').value, '9F 00 00 00');
+    assert.equal(elements.get('spi-command-0').value, '9F 00');
     assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeLoadSpi);
     elements.get('library-select').value = '0';
     elements.get('library-delete').click();
@@ -668,7 +697,77 @@ async function test()
     }
     assert.equal(libraryRecords.has(0), false);
     assert.equal(elements.get('library-select').value, '63');
-    console.log('Web UI: RU/EN/JA, named Flash library, Unicode names, load/delete, preserved queue, strict HEX, RTC/ADC/LED passed');
+    const beforeBusSwitch = requests.length;
+    const spiDraft = elements.get('spi-command-0').value;
+    elements.get('bus-i2c').click();
+    assert.equal(vm.runInContext('consoleBus', context), 1);
+    assert.equal(requests.length, beforeBusSwitch);
+    assert.equal(elements.get('spi-command-0').value, '');
+    elements.get('spi-command-0').value = '00 10';
+    elements.get('spi-command-0').input();
+    elements.get('i2c-address').value = '02';
+    elements.get('spi-send-0').click();
+    assert.match(elements.get('spi-message-0').textContent, /08 до 77/);
+    assert.equal(vm.runInContext('pendingSpi.length', context), 0);
+    elements.get('i2c-address').value = '50';
+    elements.get('i2c-operation').value = '2';
+    elements.get('i2c-read').value = '2';
+    elements.get('i2c-operation').change();
+    elements.get('spi-send-0').click();
+    assert.equal(elements.get('bus-spi').disabled, true);
+    elements.get('bus-spi').click();
+    assert.equal(vm.runInContext('consoleBus', context), 1);
+    await vm.runInContext('update()', context);
+    assert.equal(requests.at(-1).url, '/api/i2c');
+    assert.equal(requests.at(-1).options.body, 'bus=1 hz=100000 addr=80 op=2 read=2 format=hex\n00 10');
+    assert.equal(elements.get('spi-rx-0').value, 'A0 A0');
+    assert.match(elements.get('spi-message-0').textContent, /I2C.*0x50.*TX: 2.*RX: 2/);
+    elements.get('bus-spi').click();
+    assert.equal(elements.get('spi-command-0').value, spiDraft);
+    elements.get('bus-i2c').click();
+    assert.equal(elements.get('spi-command-0').value, '00 10');
+    assert.equal(elements.get('spi-rx-0').value, 'A0 A0');
+    failI2c = true;
+    elements.get('spi-send-0').click();
+    await vm.runInContext('update()', context);
+    assert.match(elements.get('spi-message-0').textContent, /NACK/);
+    const afterNack = requests.filter(item => item.url === '/api/i2c').length;
+    await vm.runInContext('update()', context);
+    assert.equal(requests.filter(item => item.url === '/api/i2c').length, afterNack);
+    failI2c = false;
+    elements.get('i2c-operation').value = '1';
+    elements.get('i2c-operation').change();
+    assert.equal(elements.get('spi-command-0').disabled, true);
+    elements.get('spi-send-0').click();
+    await vm.runInContext('update()', context);
+    assert.equal(requests.at(-1).options.body, 'bus=1 hz=100000 addr=80 op=1 read=2 format=hex\n');
+    assert.equal(elements.get('spi-tx-0').value, '—');
+    elements.get('library-name').value = 'I2C read';
+    elements.get('library-name').input();
+    elements.get('library-new').click();
+    await vm.runInContext('update()', context);
+    assert.match(requests.at(-1).options.body, /bus=1.*op=1 read=2.*\nlengths=0,0,0,0\n$/);
+    vm.runInContext('nextStorePoll = 0', context);
+    await vm.runInContext('update()', context);
+    for (let i = 0; i < 8; ++i)
+    {
+        await vm.runInContext('update()', context);
+    }
+    elements.get('library-select').value = '63';
+    elements.get('library-load').click();
+    await vm.runInContext('update()', context);
+    assert.equal(vm.runInContext('consoleBus', context), 2);
+    assert.equal(elements.get('spi-command-0').disabled, false);
+    elements.get('library-select').value = '0';
+    elements.get('library-load').click();
+    await vm.runInContext('update()', context);
+    assert.equal(vm.runInContext('consoleBus', context), 1);
+    assert.equal(elements.get('i2c-operation').value, '1');
+    assert.equal(elements.get('i2c-read').value, '2');
+    assert.equal(elements.get('library-name').value, 'I2C read');
+    elements.get('lang-ja').click();
+    assert.equal(elements.get('bus-title').textContent, 'I2C1 · 外部デバイス');
+    console.log('Web UI: SPI/I2C switch, isolated drafts, read/write/write-read, named library, NACK/no retry, RU/EN/JA, queue and RTC/ADC/LED passed');
 }
 
 test().catch((error) =>

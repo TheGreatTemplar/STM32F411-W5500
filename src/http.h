@@ -23,7 +23,8 @@ typedef enum
     HTTP_RTC,
     HTTP_SET_RTC,
     HTTP_LIBRARY,
-    HTTP_LIBRARY_COMMAND
+    HTTP_LIBRARY_COMMAND,
+    HTTP_I2C
 } http_route_t;
 
 typedef struct

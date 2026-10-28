@@ -1,4 +1,5 @@
 #include "board.h"
+#include "i2c_console.h"
 #include "spi_console.h"
 
 uint32_t SystemCoreClock = 16000000U;
@@ -68,6 +69,8 @@ void board_init(void)
     GPIOB->PUPDR &= ~0xFC000000UL;
     RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
     (void)RCC->APB1ENR;
+
+    board_i2c_init();
 
     /* PA5/6/7: AF5, SPI1 mode 0 at HSI/16 = 1 MHz. */
     GPIOA->MODER = (GPIOA->MODER & ~0x0000FC00UL) | 0x0000A800UL;

@@ -178,7 +178,15 @@ bool spi_command_parse(const char *text, size_t size, spi_command_t *command)
         }
     }
     command->ascii = ascii ? 1U : 0U;
-    ++offset;
+    return console_bytes_parse(text + offset + 1U, size - offset - 1U, ascii, command->tx,
+                               &command->size, false);
+}
+
+bool console_bytes_parse(const char *text, size_t size, bool ascii, uint8_t bytes[256],
+                         size_t *count, bool allow_empty)
+{
+    size_t offset = 0U;
+    *count = 0U;
     while (offset < size)
     {
         uint8_t byte;
@@ -211,11 +219,11 @@ bool spi_command_parse(const char *text, size_t size, spi_command_t *command)
             byte = (uint8_t)(high * 16 + low);
             offset += 2U;
         }
-        if (command->size == SPI_CONSOLE_MAX_BYTES)
+        if (*count == SPI_CONSOLE_MAX_BYTES)
         {
             return false;
         }
-        command->tx[command->size++] = byte;
+        bytes[(*count)++] = byte;
     }
-    return command->size != 0U;
+    return allow_empty || *count != 0U;
 }

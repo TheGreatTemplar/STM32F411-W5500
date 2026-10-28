@@ -160,12 +160,12 @@ static void init_store(void)
     }
 }
 
-static uint32_t legacy_crc(const uint8_t *data)
+static uint32_t sized_crc(const uint8_t *data, size_t size)
 {
     uint32_t crc = UINT32_MAX;
     size_t i;
     uint32_t bit;
-    for (i = 0U; i < 3132U; ++i)
+    for (i = 0U; i < size; ++i)
     {
         if (i >= 16U && i < 24U)
         {
@@ -340,7 +340,7 @@ int test_entry(void)
         memcpy(media + LAST_PAIR + 4U, &word, 4U);
         word = 3108U;
         memcpy(media + LAST_PAIR + 12U, &word, 4U);
-        word = legacy_crc(media + LAST_PAIR);
+        word = sized_crc(media + LAST_PAIR, 3132U);
         memcpy(media + LAST_PAIR + 16U, &word, 4U);
     }
     init_store();
@@ -387,5 +387,45 @@ int test_entry(void)
     CHECK(command_library_delete(17U) == STORE_OK);
     CHECK(finish_save());
     CHECK(strstr(json, "S16") != NULL); /* Deleting another file does not change the working set. */
+    memset(media, 0xFF, sizeof(media));
+    init_store();
+    CHECK(command_store_save(a, sizeof(a) - 1U) == STORE_OK);
+    CHECK(finish_save());
+    {
+        uint32_t word = 2U;
+        memcpy(media + LAST_PAIR + 4U, &word, 4U);
+        word = 3268U - 24U;
+        memcpy(media + LAST_PAIR + 12U, &word, 4U);
+        word = sized_crc(media + LAST_PAIR, 3268U);
+        memcpy(media + LAST_PAIR + 16U, &word, 4U);
+    }
+    init_store();
+    CHECK(command_library_load(63U) == STORE_OK);
+    CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"bus\":2") != NULL);
+    {
+        const char i2c[] =
+            "bus=1 hz=400000 addr=80 op=2 read=2 format=hex\nlengths=2,5,0,2\n00AB CD10";
+        const char read_only[] =
+            "bus=1 hz=100000 addr=8 op=1 read=256 format=hex\nlengths=0,0,0,0\n";
+        const char bad_read[] =
+            "bus=1 hz=100000 addr=8 op=1 read=256 format=hex\nlengths=2,0,0,0\n00";
+        CHECK(command_library_save(64U, "I2C", 3U, i2c, sizeof(i2c) - 1U) == STORE_OK);
+        CHECK(finish_save());
+        init_store();
+        CHECK(command_library_load(0U) == STORE_OK);
+        CHECK(command_store_json(json, sizeof(json)) != 0U);
+        CHECK(strstr(json, "\"bus\":1") != NULL && strstr(json, "\"address\":80") != NULL);
+        CHECK(strstr(json, "\"read_size\":2") != NULL && strstr(json, "AB CD") != NULL);
+        CHECK(command_library_save(0U, "I2C", 3U, bad_read, sizeof(bad_read) - 1U) ==
+              STORE_INVALID);
+        CHECK(command_library_save(0U, "I2C", 3U, read_only, sizeof(read_only) - 1U) == STORE_OK);
+        CHECK(finish_save());
+        init_store();
+        CHECK(command_library_load(0U) == STORE_OK);
+        CHECK(command_store_json(json, sizeof(json)) != 0U &&
+              strstr(json, "\"read_size\":256") != NULL);
+        CHECK(command_library_load(63U) == STORE_OK); /* Legacy SPI remains intact. */
+        CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"bus\":2") != NULL);
+    }
     return 0;
 }

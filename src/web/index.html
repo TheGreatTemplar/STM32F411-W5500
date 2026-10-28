@@ -5,13 +5,23 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Монитор STM32F411</title>
     <style>
-        :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101923; color: #e9eff5; }
+        :root { color-scheme: dark; font-family: system-ui, sans-serif; line-height: 1.4; background: #101923; color: #e9eff5; }
         * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        .bus-switch { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: min(290px,100%); height: 40px; gap: 10px; margin-bottom: 16px; }
+        .bus-switch button { height: 40px; padding: 6px 8px; }
+        .bus-switch button[aria-pressed="true"] { color: #101923; background: #6ed8c4; border-color: #6ed8c4; }
+        .i2c-options input, .i2c-options select { height: 30px; min-width: 0; padding: 3px 7px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 6px; font: inherit; }
+        #i2c-address { width: 70px; font-family: ui-monospace,monospace; }
+        #i2c-read { width: 75px; }
+        .i2c-options { display: grid; align-content: center; gap: 4px; }
+        #bus-hint { height: 64px; overflow: auto; }
+        .spi-settings { min-height: 84px; }
         body { margin: 0; padding: 28px 20px; }
         main { max-width: 960px; margin: auto; }
         header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
-        h1 { font-size: clamp(24px,4vw,36px); margin: 5px 0; letter-spacing: -1px; }
-        h2 { margin: 0; font-size: 17px; font-weight: 500; }
+        h1 { font-size: clamp(24px,4vw,36px); line-height: 48px; margin: 5px 0; letter-spacing: -1px; }
+        h2 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 500; }
         p { color: #a6b7c7; line-height: 1.6; }
         .eyebrow { color: #70c4c1; font-size: 12px; letter-spacing: 2px; }
         #status { border: 1px solid #476273; border-radius: 20px; padding: 6.8px 11.9px; color: #b7c6d3; }
@@ -152,28 +162,31 @@
             <div class="led-header"><h2>Синий светодиод · PC13</h2><div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div><span id="led-state" role="status">Состояние: —</span></div>
             <p id="led-message" role="status"></p>
         </section>
-        <section class="spi-control" aria-label="SPI-консоль">
-            <div class="spi-title"><h2>SPI2 · внешнее устройство</h2><p class="hint">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p></div>
+        <section class="spi-control" aria-label="Консоль шин">
+            <div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button></div>
+            <div class="spi-title"><h2 id="bus-title">SPI2 · внешнее устройство</h2><p class="hint" id="bus-pins">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p></div>
             <div class="spi-settings">
-                <fieldset><legend>Режим SPI</legend>
+                <fieldset class="spi-only"><legend>Режим SPI</legend>
                     <label><input type="radio" name="spi-mode" id="spi-mode-0" checked>0</label>
                     <label><input type="radio" name="spi-mode" id="spi-mode-1">1</label>
                     <label><input type="radio" name="spi-mode" id="spi-mode-2">2</label>
                     <label><input type="radio" name="spi-mode" id="spi-mode-3">3</label>
                     <div class="hint" id="spi-mode-description">CPOL=0 · CPHA=0</div>
                 </fieldset>
-                <fieldset class="vertical-options"><legend>Порядок битов</legend>
+                <fieldset class="vertical-options spi-only"><legend>Порядок битов</legend>
                     <label><input type="radio" name="spi-order" id="spi-msb" checked>MSB первым</label>
                     <label><input type="radio" name="spi-order" id="spi-lsb">LSB первым</label>
                 </fieldset>
-                <fieldset class="vertical-options"><legend>Активный CS</legend>
+                <fieldset class="vertical-options spi-only"><legend>Активный CS</legend>
                     <label><input type="radio" name="spi-cs" id="spi-cs-low" checked>LOW</label>
                     <label><input type="radio" name="spi-cs" id="spi-cs-high">HIGH</label>
                 </fieldset>
-                <div class="spi-selects"><label>Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option></select></label>
+                <fieldset class="i2c-only i2c-options" hidden><legend>Адрес I2C · HEX</legend><label>0x<input id="i2c-address" value="50" maxlength="2" spellcheck="false" aria-label="7-битный адрес I2C"></label><span class="hint">7 бит · 08–77</span></fieldset>
+                <fieldset class="i2c-only i2c-options" hidden><legend>Операция I2C</legend><select id="i2c-operation" aria-label="Операция I2C"><option value="0">Запись</option><option value="1">Чтение</option><option value="2">Запись → чтение</option></select><label>RX · байт<input id="i2c-read" type="number" value="1" min="1" max="256" step="1" aria-label="Количество байт чтения"></label></fieldset>
+                <div class="spi-selects"><label class="i2c-only" hidden>Частота<select id="i2c-hz"><option value="100000">100 кГц</option><option value="400000">400 кГц</option></select></label><label class="spi-only">Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option></select></label>
                 <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label></div>
             </div>
-            <p class="hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
+            <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
             <p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p>
             <div class="library-controls">
                 <button type="button" id="library-open-load">Загрузить</button>
@@ -184,25 +197,25 @@
                 <div class="command-heading"><label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label><p id="spi-message-0" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-0" readonly aria-label="TX команды 1">—</textarea>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-0" readonly aria-label="RX команды 1">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-0">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-0" readonly aria-label="RX команды 1">—</textarea>
             </div>
             <div class="command-card">
                 <div class="command-heading"><label for="spi-command-1">Команда 2 · передаваемые данные · до 256 байт</label><p id="spi-message-1" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-1" readonly aria-label="TX команды 2">—</textarea>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-1" readonly aria-label="RX команды 2">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-1">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-1" readonly aria-label="RX команды 2">—</textarea>
             </div>
             <div class="command-card">
                 <div class="command-heading"><label for="spi-command-2">Команда 3 · передаваемые данные · до 256 байт</label><p id="spi-message-2" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-2" readonly aria-label="TX команды 3">—</textarea>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-2" readonly aria-label="RX команды 3">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-2">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-2" readonly aria-label="RX команды 3">—</textarea>
             </div>
             <div class="command-card">
                 <div class="command-heading"><label for="spi-command-3">Команда 4 · передаваемые данные · до 256 байт</label><p id="spi-message-3" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-3" readonly aria-label="TX команды 4">—</textarea>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-3">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
             </div>
         </section>
         <footer>
@@ -240,9 +253,40 @@
     <script>
         const get = (id) => document.getElementById(id);
         let language = 'ru';
+        let consoleBus = 2;
+        const busDrafts = {};
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "I2C-команда 1": "I2C command 1",
+            "I2C-команда 2": "I2C command 2",
+            "I2C-команда 3": "I2C command 3",
+            "I2C-команда 4": "I2C command 4",
+            "Консоль шин": "Bus console",
+            "Выбор шины": "Bus selection",
+            "I2C1 · внешнее устройство": "I2C1 · external device",
+            "PB8 SCL · PB9 SDA · подтяжки к 3,3 В · общий GND": "PB8 SCL · PB9 SDA · pull-ups to 3.3 V · common GND",
+            "Адрес I2C · HEX": "I2C address · HEX",
+            "7-битный адрес I2C": "7-bit I2C address",
+            "7 бит · 08–77": "7 bits · 08–77",
+            "Операция I2C": "I2C operation",
+            "Запись → чтение": "Write → read",
+            "Запись": "Write",
+            "Чтение": "Read",
+            "Количество байт чтения": "Read byte count",
+            "100 кГц": "100 kHz",
+            "400 кГц": "400 kHz",
+            "I2C свободна": "I2C idle",
+            "Байты, прочитанные от устройства": "Bytes read from the device",
+            "I2C: адрес HEX от 08 до 77, без сдвига на бит R/W.": "I2C: HEX address 08 to 77, without the R/W bit shift.",
+            "I2C: длина чтения от 1 до 256 байт.": "I2C: read length must be 1 to 256 bytes.",
+            "I2C: некорректные настройки.": "I2C: invalid settings.",
+            "NACK: устройство не подтвердило адрес или данные.": "NACK: device did not acknowledge address or data.",
+            "Шина занята или линии удерживаются в LOW.": "Bus busy or lines held LOW.",
+            "Тайм-аут I2C: возможна частичная передача.": "I2C timeout: partial transfer possible.",
+            "Ошибка шины I2C: возможна частичная передача.": "I2C bus error: partial transfer possible.",
+            "Потеря арбитража I2C: повтор только вручную.": "I2C arbitration lost: retry manually only.",
+            "Настройки общие для четырёх команд. Адрес 7-битный. Запись → чтение использует повторный START без STOP. Для чтения пустые TX допустимы; длина RX задаётся отдельно.": "Settings apply to all four commands. Address is 7-bit. Write → read uses repeated START without STOP. Read-only needs no TX; set RX length separately.",
             "Библиотека команд": "Command library",
             "Монитор STM32F411": "STM32F411 Monitor",
             "команда принята в очередь": "command queued",
@@ -447,6 +491,35 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "I2C-команда 1": "I2C コマンド 1",
+            "I2C-команда 2": "I2C コマンド 2",
+            "I2C-команда 3": "I2C コマンド 3",
+            "I2C-команда 4": "I2C コマンド 4",
+            "Консоль шин": "バスコンソール",
+            "Выбор шины": "バス選択",
+            "I2C1 · внешнее устройство": "I2C1 · 外部デバイス",
+            "PB8 SCL · PB9 SDA · подтяжки к 3,3 В · общий GND": "PB8 SCL · PB9 SDA · 3.3 V プルアップ · 共通 GND",
+            "Адрес I2C · HEX": "I2C アドレス · HEX",
+            "7-битный адрес I2C": "7 ビット I2C アドレス",
+            "7 бит · 08–77": "7 ビット · 08–77",
+            "Операция I2C": "I2C 操作",
+            "Запись → чтение": "書き込み → 読み出し",
+            "Запись": "書き込み",
+            "Чтение": "読み出し",
+            "Количество байт чтения": "読み出すバイト数",
+            "100 кГц": "100 kHz",
+            "400 кГц": "400 kHz",
+            "I2C свободна": "I2C 待機中",
+            "Байты, прочитанные от устройства": "デバイスから読み出したバイト",
+            "I2C: адрес HEX от 08 до 77, без сдвига на бит R/W.": "I2C: R/W ビットを含めず、08～77 の HEX アドレスを入力してください。",
+            "I2C: длина чтения от 1 до 256 байт.": "I2C: 読み出し長は 1～256 バイトです。",
+            "I2C: некорректные настройки.": "I2C: 設定が無効です。",
+            "NACK: устройство не подтвердило адрес или данные.": "NACK: アドレスまたはデータへの応答がありません。",
+            "Шина занята или линии удерживаются в LOW.": "バス使用中、または信号線が LOW のままです。",
+            "Тайм-аут I2C: возможна частичная передача.": "I2C タイムアウト: 一部が転送された可能性があります。",
+            "Ошибка шины I2C: возможна частичная передача.": "I2C バスエラー: 一部が転送された可能性があります。",
+            "Потеря арбитража I2C: повтор только вручную.": "I2C 調停失敗: 再試行は手動のみです。",
+            "Настройки общие для четырёх команд. Адрес 7-битный. Запись → чтение использует повторный START без STOP. Для чтения пустые TX допустимы; длина RX задаётся отдельно.": "設定は 4 コマンドに共通です。アドレスは 7 ビットです。書き込み → 読み出しでは STOP を挟まず再 START します。読み出しのみの場合 TX は不要です。RX 長を指定してください。",
             "Библиотека команд": "コマンドライブラリ",
             "Монитор STM32F411": "STM32F411 モニター",
             "команда принята в очередь": "コマンドをキューに追加しました",
@@ -781,7 +854,8 @@
                 setText(get('spi-send-' + i), pendingSpi.length >= 4 ? 'Очередь полна' :
                     (spiBusy || pendingSpi.length ? 'В очередь' : 'Передать'));
             }
-            setText(get('spi-queue'), (activeSpi ? 'Передача №' + activeSpi.sequence : 'SPI свободна') +
+            busButtons();
+            setText(get('spi-queue'), (activeSpi ? 'Передача №' + activeSpi.sequence : consoleBus === 2 ? 'SPI свободна' : 'I2C свободна') +
                 ' · очередь: ' + pendingSpi.length + ' / 4');
         }
         function rememberCommand(index)
@@ -923,8 +997,154 @@
             }
             return 0;
         }
+        function busButtons()
+        {
+            const busy = spiBusy || pendingSpi.length > 0 || saveBusy || libraryBusy || storeWaiting;
+            get('bus-spi').disabled = busy;
+            get('bus-i2c').disabled = busy;
+        }
+        function captureConsole()
+        {
+            const ids = ['spi-hz', 'spi-format', 'i2c-hz', 'i2c-address', 'i2c-operation', 'i2c-read', 'library-name'];
+            for (let i = 0; i < 4; ++i)
+            {
+                ids.push('spi-command-' + i, 'spi-tx-' + i, 'spi-rx-' + i);
+            }
+            return {values: Object.fromEntries(ids.map(id => [id, get(id).value])),
+                checks: Object.fromEntries(['spi-msb','spi-lsb','spi-cs-low','spi-cs-high',...Array.from({length: 4}, (_, i) => 'spi-mode-' + i)].map(id => [id, get(id).checked])),
+                messages: Array.from({length: 4}, (_, i) =>
+                {
+                    const el = get('spi-message-' + i);
+                    return {text: originalText.get(el.firstChild) || '', error: el.className.includes('input-error')};
+                }),
+                selectedSet, draftDirty};
+        }
+        function i2cMode()
+        {
+            const readOnly = consoleBus === 1 && get('i2c-operation').value === '1';
+            get('i2c-read').disabled = get('i2c-operation').value === '0';
+            for (let i = 0; i < 4; ++i)
+            {
+                get('spi-command-' + i).disabled = readOnly;
+            }
+        }
+        function switchConsole(bus, force = false)
+        {
+            if (bus === consoleBus || (!force && (spiBusy || pendingSpi.length || saveBusy || libraryBusy || storeWaiting)))
+            {
+                return;
+            }
+            busDrafts[consoleBus] = captureConsole();
+            consoleBus = bus;
+            const savedDraft = busDrafts[bus];
+            if (savedDraft)
+            {
+                for (const [id, value] of Object.entries(savedDraft.values))
+                {
+                    get(id).value = value;
+                }
+                for (const [id, checked] of Object.entries(savedDraft.checks))
+                {
+                    get(id).checked = checked;
+                }
+                selectedSet = savedDraft.selectedSet;
+                draftDirty = savedDraft.draftDirty;
+            }
+            else
+            {
+                selectedSet = 64;
+                draftDirty = false;
+                get('library-name').value = 'I2C';
+                get('spi-format').value = 'hex';
+                get('i2c-hz').value = '100000';
+                get('i2c-address').value = '50';
+                get('i2c-operation').value = '0';
+                get('i2c-read').value = '1';
+                for (let i = 0; i < 4; ++i)
+                {
+                    get('spi-command-' + i).value = '';
+                    get('spi-tx-' + i).value = '—';
+                    get('spi-rx-' + i).value = '—';
+                }
+            }
+            for (const el of document.querySelectorAll('.spi-only'))
+            {
+                el.hidden = bus !== 2;
+            }
+            for (const el of document.querySelectorAll('.i2c-only'))
+            {
+                el.hidden = bus !== 1;
+            }
+            get('bus-spi').setAttribute('aria-pressed', String(bus === 2));
+            get('bus-i2c').setAttribute('aria-pressed', String(bus === 1));
+            setText(get('bus-title'), bus === 2 ? 'SPI2 · внешнее устройство' : 'I2C1 · внешнее устройство');
+            setText(get('bus-pins'), bus === 2 ? 'PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND' : 'PB8 SCL · PB9 SDA · подтяжки к 3,3 В · общий GND');
+            setText(get('bus-hint'), bus === 2 ? 'Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.' :
+                'Настройки общие для четырёх команд. Адрес 7-битный. Запись → чтение использует повторный START без STOP. Для чтения пустые TX допустимы; длина RX задаётся отдельно.');
+            for (let i = 0; i < 4; ++i)
+            {
+                const message = savedDraft ? savedDraft.messages[i] : {text: '', error: false};
+                spiMessage(i, message.text, message.error);
+                rememberCommand(i);
+                const commandLabel = (bus === 2 ? 'SPI-команда ' : 'I2C-команда ') + (i + 1);
+                originalAttributes.set(get('spi-command-' + i), {'aria-label': commandLabel});
+                get('spi-command-' + i).setAttribute('aria-label', translate(commandLabel));
+                setText(get('rx-hint-' + i), bus === 2 ? 'Байты с MISO, принятые во время этой передачи' : 'Байты, прочитанные от устройства');
+            }
+            get('library-select').value = String(selectedSet);
+            i2cMode();
+            libraryButtons();
+            spiButtons();
+        }
+        function i2cSettingsError()
+        {
+            if (consoleBus !== 1)
+            {
+                return '';
+            }
+            const address = get('i2c-address').value;
+            if (!/^[0-9a-fA-F]{2}$/.test(address) || parseInt(address, 16) < 8 || parseInt(address, 16) > 0x77)
+            {
+                return 'I2C: адрес HEX от 08 до 77, без сдвига на бит R/W.';
+            }
+            const operation = get('i2c-operation').value;
+            if (!['0','1','2'].includes(operation) || !['100000','400000'].includes(get('i2c-hz').value))
+            {
+                return 'I2C: некорректные настройки.';
+            }
+            if (operation !== '0' && (!/^\d+$/.test(get('i2c-read').value) || Number(get('i2c-read').value) < 1 || Number(get('i2c-read').value) > 256))
+            {
+                return 'I2C: длина чтения от 1 до 256 байт.';
+            }
+            return '';
+        }
+        function commandText(index)
+        {
+            return consoleBus === 1 && get('i2c-operation').value === '1' ? '' : get('spi-command-' + index).value;
+        }
+        get('bus-spi').addEventListener('click', () => switchConsole(2));
+        get('bus-i2c').addEventListener('click', () => switchConsole(1));
+        for (const id of ['i2c-hz','i2c-address','i2c-operation','i2c-read'])
+        {
+            get(id).addEventListener('input', () =>
+            {
+                i2cMode();
+                markDirty();
+            });
+            get(id).addEventListener('change', () =>
+            {
+                i2cMode();
+                markDirty();
+            });
+        }
         function settingsLine()
         {
+            if (consoleBus === 1)
+            {
+                return 'bus=1 hz=' + get('i2c-hz').value + ' addr=' + parseInt(get('i2c-address').value, 16) +
+                    ' op=' + get('i2c-operation').value + ' read=' + (get('i2c-operation').value === '0' ? 0 : get('i2c-read').value) +
+                    ' format=' + get('spi-format').value;
+            }
             return 'bus=2 mode=' + spiMode() + ' hz=' + get('spi-hz').value +
                 ' lsb=' + (get('spi-lsb').checked ? 1 : 0) +
                 ' cs_high=' + (get('spi-cs-high').checked ? 1 : 0) +
@@ -1002,14 +1222,14 @@
                 spiMessage(index, 'Очередь заполнена: дождись выполнения принятых команд.', true);
                 return;
             }
-            const text = get('spi-command-' + index).value;
-            const error = validateText(text, false);
+            const text = commandText(index);
+            const error = i2cSettingsError() || validateText(text, consoleBus === 1 && get('i2c-operation').value === '1');
             if (error)
             {
                 spiMessage(index, error, true);
                 return;
             }
-            const request = {index, body: settingsLine() + '\n' + text, sequence: ++spiSequence, queuedAt: performance.now()};
+            const request = {index, endpoint: consoleBus === 1 ? '/api/i2c' : '/api/spi', body: settingsLine() + '\n' + text, sequence: ++spiSequence, queuedAt: performance.now()};
             pendingSpi.push(request);
             get('spi-rx-' + index).value = '—';
             spiMessage(index, '№' + request.sequence + ' · команда принята в очередь');
@@ -1022,7 +1242,14 @@
             {
                 return;
             }
-            const texts = Array.from({length: 4}, (_, i) => get('spi-command-' + i).value);
+            const texts = Array.from({length: 4}, (_, i) => commandText(i));
+            const settingsError = i2cSettingsError();
+            if (settingsError)
+            {
+                get('store-status').className = 'input-error';
+                setText(get('store-status'), settingsError);
+                return;
+            }
             for (let i = 0; i < 4; ++i)
             {
                 const error = validateText(texts[i], true);
@@ -1056,10 +1283,21 @@
             flashReady = data.present && data.ready;
             if (initial && data.has_saved && !data.scanning && !draftDirty)
             {
+                const settings = data.settings;
+                switchConsole(settings.bus === 1 ? 1 : 2, true);
                 selectedSet = data.id;
                 get('library-name').value = data.name || 'Default';
-                const settings = data.settings;
-                get('spi-hz').value = String(settings.hz);
+                if (consoleBus === 1)
+                {
+                    get('i2c-hz').value = String(settings.hz);
+                    get('i2c-address').value = settings.address.toString(16).toUpperCase().padStart(2, '0');
+                    get('i2c-operation').value = String(settings.operation);
+                    get('i2c-read').value = String(settings.read_size || 1);
+                }
+                if (consoleBus === 2)
+                {
+                    get('spi-hz').value = String(settings.hz);
+                }
                 get('spi-format').value = settings.format;
                 get('spi-lsb').checked = !!settings.lsb;
                 get('spi-msb').checked = !settings.lsb;
@@ -1075,6 +1313,7 @@
                 }
                 markDirty();
                 draftDirty = false;
+                i2cMode();
             }
             const completed = saveBusy && !data.busy && !data.scanning;
             storeWaiting = data.busy || data.scanning;
@@ -1119,6 +1358,7 @@
             8: 'Ошибка проверки записи', 9: 'Набор не найден', 10: 'Библиотека заполнена', 11: 'Некорректное имя набора', 12: 'Такое имя уже существует'};
         function libraryButtons()
         {
+            busButtons();
             const busy = saveBusy || storeWaiting || libraryBusy || !flashReady;
             get('store-save').disabled = busy;
             get('library-new').disabled = busy;
@@ -1153,7 +1393,7 @@
                 const option = document.createElement('option');
                 option.value = String(item.id);
                 option.setAttribute('data-user-text', '');
-                option.textContent = item.name;
+                option.textContent = (item.bus === 1 ? 'I2C' : 'SPI') + ' · ' + item.name;
                 get('library-select').append(option);
             }
             get('library-select').value = librarySets.some((item) => item.id === selectedSet) ? String(selectedSet) :
@@ -1172,7 +1412,7 @@
             {
                 return;
             }
-            if (kind === 'load' && draftDirty && !confirm(translate('Заменить несохранённые команды выбранным набором?')))
+            if (kind === 'load' && (draftDirty || busDrafts[librarySets.find(item => item.id === id)?.bus || 2]?.draftDirty) && !confirm(translate('Заменить несохранённые команды выбранным набором?')))
             {
                 return;
             }
@@ -1485,9 +1725,25 @@
                 }
                 if (spi !== null)
                 {
-                    const reply = await fetch('/api/spi', {method: 'POST',
+                    const reply = await fetch(spi.endpoint || '/api/spi', {method: 'POST',
                         headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'},
                         body: spi.body, signal: controller.signal});
+                    if (spi.endpoint === '/api/i2c')
+                    {
+                        const result = await reply.json();
+                        get('spi-tx-' + spi.index).value = (String(result.tx || '').match(/../g) || []).join(' ') || '—';
+                        get('spi-rx-' + spi.index).value = (String(result.rx || '').match(/../g) || []).join(' ') || '—';
+                        if (!reply.ok || result.error)
+                        {
+                            const errors = {1: 'NACK: устройство не подтвердило адрес или данные.', 2: 'Шина занята или линии удерживаются в LOW.',
+                                3: 'Тайм-аут I2C: возможна частичная передача.', 4: 'Ошибка шины I2C: возможна частичная передача.',
+                                5: 'Потеря арбитража I2C: повтор только вручную.', 6: 'I2C: некорректные настройки.'};
+                            throw new Error('I2C: ' + (errors[result.error] || 'HTTP ' + reply.status));
+                        }
+                        spiMessage(spi.index, '№' + spi.sequence + ' · I2C · 0x' + result.address.toString(16).toUpperCase().padStart(2, '0') +
+                            ' · TX: ' + result.count + ' · RX: ' + result.read_count + ' · ' + result.transfer_us + ' мкс · ' + result.hz + ' Гц');
+                        return;
+                    }
                     if (!reply.ok)
                     {
                         throw new Error('SPI: ' + (await reply.text()).trim());
@@ -1580,7 +1836,7 @@
                 }
                 if (spi !== null)
                 {
-                    spiMessage(spi.index, '№' + spi.sequence + ' · ' + (error.message.startsWith('SPI:') ? error.message :
+                    spiMessage(spi.index, '№' + spi.sequence + ' · ' + ((error.message.startsWith('SPI:') || error.message.startsWith('I2C:')) ? error.message :
                         'Нет подтверждения: команда могла выполниться. Автоповтора нет; проверь устройство перед повторной передачей.'), true);
                     return;
                 }

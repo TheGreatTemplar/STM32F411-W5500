@@ -1,5 +1,6 @@
 #include "command_store.h"
 #include "board.h"
+#include "i2c_console.h"
 #include "spi_console.h"
 #include <string.h>
 
@@ -27,7 +28,13 @@ typedef struct
     uint32_t deleted;
     uint32_t name_size;
     char name[COMMAND_LIBRARY_NAME_BYTES];
+    uint32_t bus;
+    uint32_t address;
+    uint32_t operation;
+    uint32_t read_size;
 } store_record_t;
+
+#define V2_BYTES offsetof(store_record_t, bus)
 
 #define LEGACY_BYTES offsetof(store_record_t, deleted)
 
@@ -35,6 +42,7 @@ typedef struct
 {
     uint32_t sequence;
     uint32_t copy;
+    uint32_t bus;
     uint32_t kind; /* 0 free, 1 live, 2 deleted, 3 foreign/damaged */
     uint32_t name_size;
     char name[COMMAND_LIBRARY_NAME_BYTES];
@@ -88,12 +96,36 @@ static uint32_t crc_byte(uint32_t crc, uint8_t value)
     return crc;
 }
 
+static size_t record_bytes(const store_record_t *record)
+{
+    return record->version == 1U   ? LEGACY_BYTES
+           : record->version == 2U ? V2_BYTES
+                                   : sizeof(*record);
+}
+
+static void normalize(store_record_t *record)
+{
+    if (record->version < 3U)
+    {
+        record->bus = 2U;
+        record->address = 0U;
+        record->operation = 0U;
+        record->read_size = 0U;
+    }
+    if (record->version == 1U)
+    {
+        record->deleted = 0U;
+        record->name_size = 7U;
+        memcpy(record->name, "Default", 7U);
+    }
+}
+
 static uint32_t record_crc(const store_record_t *record)
 {
     const uint8_t *bytes = (const uint8_t *)record;
     uint32_t crc = UINT32_MAX;
     size_t i;
-    for (i = 0U; i < (record->version == 1U ? LEGACY_BYTES : sizeof(*record)); ++i)
+    for (i = 0U; i < record_bytes(record); ++i)
     {
         if ((i < 16U) || (i >= 24U))
         {
@@ -210,15 +242,32 @@ static bool valid_record(const store_record_t *record)
 {
     uint32_t i;
     spi_clock_plan_t plan;
-    if ((record->magic != STORE_MAGIC) || ((record->version != 1U) && (record->version != 2U)) ||
-        (record->commit != STORE_COMMIT) ||
-        (record->payload_size != (record->version == 1U ? LEGACY_BYTES : sizeof(*record)) - 24U) ||
+    if ((record->magic != STORE_MAGIC) || (record->version < 1U || record->version > 3U) ||
+        (record->commit != STORE_COMMIT) || (record->payload_size != record_bytes(record) - 24U) ||
         (record->crc != record_crc(record)) || (record->mode > 3U) || (record->lsb > 1U) ||
-        (record->cs_high > 1U) || (record->ascii > 1U) || !spi_clock_plan(record->hz, &plan))
+        (record->cs_high > 1U) || (record->ascii > 1U))
     {
         return false;
     }
-    if (record->version == 2U &&
+    if (record->version == 3U && record->bus == 1U)
+    {
+        i2c_command_t command = {0};
+        command.hz = record->hz;
+        command.address = record->address;
+        command.operation = record->operation;
+        command.read_size = record->read_size;
+        command.size = command.operation == 1U ? 0U : 1U;
+        command.ascii = record->ascii;
+        if (!i2c_command_valid(&command))
+        {
+            return false;
+        }
+    }
+    else if ((record->version == 3U && record->bus != 2U) || !spi_clock_plan(record->hz, &plan))
+    {
+        return false;
+    }
+    if (record->version >= 2U &&
         (record->deleted > 1U || !command_library_name_valid(record->name, record->name_size)))
     {
         return false;
@@ -243,6 +292,7 @@ static void defaults(void)
 {
     memset(&current, 0, sizeof(current));
     current.hz = 1000000U;
+    current.bus = 2U;
     selected_id = COMMAND_LIBRARY_SLOTS;
     has_saved = false;
 }
@@ -285,19 +335,15 @@ static void scan_step(void)
     {
         return;
     }
-    if ((candidate.version == 2U || id == COMMAND_LIBRARY_SLOTS - 1U) && valid_record(&candidate))
+    if ((candidate.version >= 2U || id == COMMAND_LIBRARY_SLOTS - 1U) && valid_record(&candidate))
     {
-        if (candidate.version == 1U)
-        {
-            candidate.deleted = 0U;
-            candidate.name_size = 7U;
-            memcpy(candidate.name, "Default", 7U);
-        }
+        normalize(&candidate);
         if (entry->kind == 0U || entry->kind == 3U || newer(candidate.sequence, entry->sequence))
         {
             entry->kind = candidate.deleted != 0U ? 2U : 1U;
             entry->copy = copy;
             entry->sequence = candidate.sequence;
+            entry->bus = candidate.bus;
             entry->name_size = candidate.name_size;
             memcpy(entry->name, candidate.name, candidate.name_size);
         }
@@ -414,6 +460,8 @@ static bool parse_snapshot(const char *body, size_t size)
 {
     char command_text[1024];
     spi_command_t command;
+    i2c_command_t i2c;
+    const bool is_i2c = size >= 6U && memcmp(body, "bus=1 ", 6U) == 0;
     size_t header = 0U;
     size_t offset;
     uint32_t i;
@@ -427,16 +475,34 @@ static bool parse_snapshot(const char *body, size_t size)
     }
     memcpy(command_text, body, header + 1U);
     memcpy(command_text + header + 1U, "00", 2U);
-    if (!spi_command_parse(command_text, header + 3U, &command))
-    {
-        return false;
-    }
     memset(&candidate, 0, sizeof(candidate));
-    candidate.hz = command.hz;
-    candidate.mode = command.mode;
-    candidate.lsb = command.lsb_first;
-    candidate.cs_high = command.cs_high;
-    candidate.ascii = command.ascii;
+    if (is_i2c)
+    {
+        if (!i2c_command_parse(command_text, header + 1U, &i2c) &&
+            !i2c_command_parse(command_text, header + 3U, &i2c))
+        {
+            return false;
+        }
+        candidate.bus = 1U;
+        candidate.hz = i2c.hz;
+        candidate.ascii = i2c.ascii;
+        candidate.address = i2c.address;
+        candidate.operation = i2c.operation;
+        candidate.read_size = i2c.read_size;
+    }
+    else
+    {
+        if (!spi_command_parse(command_text, header + 3U, &command))
+        {
+            return false;
+        }
+        candidate.bus = 2U;
+        candidate.hz = command.hz;
+        candidate.mode = command.mode;
+        candidate.lsb = command.lsb_first;
+        candidate.cs_high = command.cs_high;
+        candidate.ascii = command.ascii;
+    }
     offset = header + 1U;
     if ((size - offset < 8U) || (memcmp(body + offset, "lengths=", 8U) != 0))
     {
@@ -473,7 +539,8 @@ static bool parse_snapshot(const char *body, size_t size)
         if (length != 0U)
         {
             memcpy(command_text + header + 1U, body + offset, length);
-            if (!spi_command_parse(command_text, header + 1U + length, &command))
+            if (is_i2c ? !i2c_command_parse(command_text, header + 1U + length, &i2c)
+                       : !spi_command_parse(command_text, header + 1U + length, &command))
             {
                 return false;
             }
@@ -499,7 +566,7 @@ static store_error_t available(void)
 static void begin_write(uint32_t id)
 {
     candidate.magic = STORE_MAGIC;
-    candidate.version = 2U;
+    candidate.version = 3U;
     candidate.sequence = generation + 1U;
     candidate.payload_size = sizeof(candidate) - 24U;
     candidate.commit = UINT32_MAX;
@@ -533,12 +600,7 @@ store_error_t command_library_load(uint32_t id)
     {
         return STORE_VERIFY;
     }
-    if (candidate.version == 1U)
-    {
-        candidate.deleted = 0U;
-        candidate.name_size = 7U;
-        memcpy(candidate.name, "Default", 7U);
-    }
+    normalize(&candidate);
     current = candidate;
     selected_id = id;
     has_saved = true;
@@ -627,11 +689,7 @@ store_error_t command_library_delete(uint32_t id)
     {
         return STORE_VERIFY;
     }
-    if (candidate.version == 1U)
-    {
-        candidate.name_size = 7U;
-        memcpy(candidate.name, "Default", 7U);
-    }
+    normalize(&candidate);
     candidate.deleted = 1U;
     begin_write(id);
     return STORE_OK;
@@ -761,6 +819,7 @@ void command_store_poll(void)
         entry->kind = candidate.deleted != 0U ? 2U : 1U;
         entry->sequence = candidate.sequence;
         entry->copy = (target_address - slot_address(target_id, 0U)) / SECTOR_BYTES;
+        entry->bus = candidate.bus;
         entry->name_size = candidate.name_size;
         memcpy(entry->name, candidate.name, candidate.name_size);
         generation = candidate.sequence;
@@ -902,6 +961,14 @@ size_t command_store_json(char *json, size_t capacity)
     put_uint(&writer, current.cs_high);
     put_text(&writer, ",\"format\":");
     put_text(&writer, current.ascii != 0U ? "\"ascii\"" : "\"hex\"");
+    put_text(&writer, ",\"bus\":");
+    put_uint(&writer, current.bus);
+    put_text(&writer, ",\"address\":");
+    put_uint(&writer, current.address);
+    put_text(&writer, ",\"operation\":");
+    put_uint(&writer, current.operation);
+    put_text(&writer, ",\"read_size\":");
+    put_uint(&writer, current.read_size);
     put_text(&writer, "},\"commands\":[");
     for (i = 0U; i < COMMAND_STORE_COUNT; ++i)
     {
@@ -973,6 +1040,8 @@ size_t command_library_json(char *json, size_t capacity, uint32_t offset)
             put_uint(&writer, i);
             put_text(&writer, ",\"name\":");
             put_string(&writer, catalog[i].name, catalog[i].name_size);
+            put_text(&writer, ",\"bus\":");
+            put_uint(&writer, catalog[i].bus);
             put_char(&writer, '}');
         }
     }

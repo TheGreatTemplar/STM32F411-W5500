@@ -25,6 +25,8 @@ typedef struct
     uint32_t prescaler;
 } spi_clock_plan_t;
 
+bool console_bytes_parse(const char *text, size_t size, bool ascii, uint8_t bytes[256],
+                         size_t *count, bool allow_empty);
 bool spi_clock_plan(uint32_t hz, spi_clock_plan_t *plan);
 bool spi_command_parse(const char *text, size_t size, spi_command_t *command);
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES]);

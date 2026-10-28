@@ -2,6 +2,7 @@
 #include "board.h"
 #include "command_store.h"
 #include "config.h"
+#include "i2c_console.h"
 #include "rtc.h"
 #include "spi_console.h"
 #include "w5500.h"
@@ -195,6 +196,63 @@ static bool diagnostics_response(http_client_t *client)
     json[json_used++] = ']';
     json[json_used++] = '}';
     return response(client, 200U, "OK", "application/json", json, json_used, "");
+}
+
+static bool i2c_response(http_client_t *client)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    i2c_command_t command;
+    i2c_result_t result;
+    i2c_error_t error;
+    uint8_t rx[256];
+    char tx_hex[513];
+    char rx_hex[513];
+    size_t offset;
+    size_t i;
+    int count;
+    for (offset = 0U; offset + 4U <= client->used; ++offset)
+    {
+        if (memcmp(client->request + offset, "\r\n\r\n", 4U) == 0)
+        {
+            break;
+        }
+    }
+    offset += 4U;
+    if (offset > client->used ||
+        !i2c_command_parse(client->request + offset, client->used - offset, &command))
+    {
+        const char *json = "{\"error\":6,\"tx\":\"\",\"rx\":\"\"}";
+        return response(client, 400U, "Bad Request", "application/json", json, strlen(json), "");
+    }
+    error = board_i2c_console(&command, rx, &result);
+    for (i = 0U; i < result.tx_done; ++i)
+    {
+        tx_hex[2U * i] = digits[command.tx[i] >> 4U];
+        tx_hex[2U * i + 1U] = digits[command.tx[i] & 15U];
+    }
+    tx_hex[2U * i] = '\0';
+    for (i = 0U; i < result.rx_done; ++i)
+    {
+        rx_hex[2U * i] = digits[rx[i] >> 4U];
+        rx_hex[2U * i + 1U] = digits[rx[i] & 15U];
+    }
+    rx_hex[2U * i] = '\0';
+    count = snprintf(client->body, sizeof(client->body),
+                     "{\"bus\":1,\"address\":%lu,\"operation\":%lu,\"hz\":%lu,\"requested_hz\":%lu,"
+                     "\"count\":%lu,\"read_count\":%lu,\"transfer_us\":%lu,\"error\":%u,"
+                     "\"tx\":\"%s\",\"rx\":\"%s\"}",
+                     (unsigned long)command.address, (unsigned long)command.operation,
+                     (unsigned long)result.actual_hz, (unsigned long)command.hz,
+                     (unsigned long)result.tx_done, (unsigned long)result.rx_done,
+                     (unsigned long)result.duration_us, (unsigned int)error, tx_hex, rx_hex);
+    return count > 0 && (size_t)count < sizeof(client->body) &&
+           response(client,
+                    error == I2C_OK        ? 200U
+                    : error == I2C_TIMEOUT ? 504U
+                    : error == I2C_INVALID ? 400U
+                                           : 409U,
+                    error == I2C_OK ? "OK" : "I2C Error", "application/json", client->body,
+                    (size_t)count, "");
 }
 
 static bool spi_response(http_client_t *client)
@@ -416,6 +474,8 @@ static bool dispatch(http_client_t *client, http_route_t route, const adc_snapsh
 {
     switch (route)
     {
+    case HTTP_I2C:
+        return i2c_response(client);
     case HTTP_LIBRARY:
         return library_response(client, false);
     case HTTP_LIBRARY_COMMAND:
