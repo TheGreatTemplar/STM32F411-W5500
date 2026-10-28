@@ -1,3 +1,4 @@
+#include "config.h"
 #include "http.h"
 #include <string.h>
 
@@ -23,10 +24,11 @@ static bool header_equals(const char *text, size_t size, const char *expected)
     return true;
 }
 
-static bool led_headers_valid(const char *request, size_t start, size_t end)
+static bool command_headers_valid(const char *request, size_t start, size_t end, size_t *body_size)
 {
     bool control = false;
     bool length_seen = false;
+    *body_size = 0U;
     while (start + 2U < end)
     {
         size_t stop = start;
@@ -75,10 +77,17 @@ static bool led_headers_valid(const char *request, size_t start, size_t end)
             length_seen = true;
             while (value < value_end)
             {
-                if (request[value++] != '0')
+                size_t digit;
+                if ((request[value] < '0') || (request[value] > '9'))
                 {
                     return false;
                 }
+                digit = (size_t)(request[value++] - '0');
+                if (*body_size > (APP_REQUEST_CAPACITY - digit) / 10U)
+                {
+                    return false;
+                }
+                *body_size = *body_size * 10U + digit;
             }
         }
         start = stop + 2U;
@@ -140,15 +149,32 @@ http_route_t http_parse(const char *request, size_t size)
     }
     path_size = (size_t)(version - path);
     if (((path_size == 11U) && (memcmp(path, "/api/led/on", 11U) == 0)) ||
-        ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)))
+        ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)) ||
+        ((path_size == 8U) && (memcmp(path, "/api/spi", 8U) == 0)))
     {
+        size_t body_size;
+        const bool spi = path_size == 8U;
         if (!post)
         {
             return HTTP_POST_REQUIRED;
         }
-        if ((size != end) || !led_headers_valid(request, line_end + 2U, end))
+        if (!command_headers_valid(request, line_end + 2U, end, &body_size) ||
+            (end > APP_REQUEST_CAPACITY) || (body_size > APP_REQUEST_CAPACITY - end) ||
+            (!spi && (body_size != 0U)) || (spi && (body_size == 0U)))
         {
             return HTTP_BAD_REQUEST;
+        }
+        if (size < end + body_size)
+        {
+            return HTTP_INCOMPLETE;
+        }
+        if (size != end + body_size)
+        {
+            return HTTP_BAD_REQUEST;
+        }
+        if (spi)
+        {
+            return HTTP_SPI;
         }
         return path_size == 11U ? HTTP_LED_ON : HTTP_LED_OFF;
     }

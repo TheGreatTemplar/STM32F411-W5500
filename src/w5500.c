@@ -3,11 +3,11 @@
 #include "config.h"
 #include <string.h>
 
-/* W5500 variable-length SPI frames. Only socket 0 is used in this test. */
+/* W5500 variable-length SPI frames. HTTP uses sockets 0 through 3. */
 #define COMMON_BLOCK 0U
-#define SOCKET_BLOCK 1U
-#define TX_BLOCK 2U
-#define RX_BLOCK 3U
+#define SOCKET_BLOCK(n) ((uint8_t)(1U + 4U * (uint32_t)(n)))
+#define TX_BLOCK(n) ((uint8_t)(2U + 4U * (uint32_t)(n)))
+#define RX_BLOCK(n) ((uint8_t)(3U + 4U * (uint32_t)(n)))
 #define SN_MR 0x0000U
 #define SN_CR 0x0001U
 #define SN_IR 0x0002U
@@ -21,6 +21,9 @@
 #define SN_RX_RD 0x0028U
 
 static bool io_ok;
+static bool sending[APP_HTTP_SOCKETS];
+static uint32_t send_started[APP_HTTP_SOCKETS];
+static uint32_t send_size[APP_HTTP_SOCKETS];
 static uint32_t init_attempts;
 static uint32_t spi_errors;
 static uint32_t tx_timeouts;
@@ -58,26 +61,26 @@ static void write8(uint8_t block, uint16_t address, uint8_t value)
     write_bytes(block, address, &value, 1U);
 }
 
-static uint16_t read16(uint16_t address)
+static uint16_t read16(uint8_t socket, uint16_t address)
 {
     uint8_t bytes[2] = {0U, 0U};
-    read_bytes(SOCKET_BLOCK, address, bytes, sizeof(bytes));
+    read_bytes(SOCKET_BLOCK(socket), address, bytes, sizeof(bytes));
     return (uint16_t)(((uint16_t)bytes[0] << 8U) | bytes[1]);
 }
 
-static void write16(uint16_t address, uint16_t value)
+static void write16(uint8_t socket, uint16_t address, uint16_t value)
 {
     const uint8_t bytes[2] = {(uint8_t)(value >> 8U), (uint8_t)value};
-    write_bytes(SOCKET_BLOCK, address, bytes, sizeof(bytes));
+    write_bytes(SOCKET_BLOCK(socket), address, bytes, sizeof(bytes));
 }
 
-static uint16_t stable16(uint16_t address)
+static uint16_t stable16(uint8_t socket, uint16_t address)
 {
     uint32_t attempt;
-    uint16_t old = read16(address);
+    uint16_t old = read16(socket, address);
     for (attempt = 0U; io_ok && (attempt < 16U); ++attempt)
     {
-        const uint16_t value = read16(address);
+        const uint16_t value = read16(socket, address);
         if (old == value)
         {
             return value;
@@ -88,11 +91,11 @@ static uint16_t stable16(uint16_t address)
     return 0U;
 }
 
-static bool command(uint8_t value)
+static bool command(uint8_t socket, uint8_t value)
 {
     const uint32_t start = board_millis();
-    write8(SOCKET_BLOCK, SN_CR, value);
-    while (io_ok && (read8(SOCKET_BLOCK, SN_CR) != 0U))
+    write8(SOCKET_BLOCK(socket), SN_CR, value);
+    while (io_ok && (read8(SOCKET_BLOCK(socket), SN_CR) != 0U))
     {
         if ((uint32_t)(board_millis() - start) >= 20U)
         {
@@ -112,6 +115,7 @@ bool w5500_init(void)
     uint8_t check[4] = {0U, 0U, 0U, 0U};
     ++init_attempts;
     board_w5500_reset();
+    memset(sending, 0, sizeof(sending));
     io_ok = true;
     if (read8(COMMON_BLOCK, 0x0039U) != 0x04U)
     {
@@ -129,8 +133,8 @@ bool w5500_init(void)
     for (socket = 0U; socket < 8U; ++socket)
     {
         const uint8_t block = (uint8_t)(1U + 4U * socket);
-        write8(block, SN_RXBUF_SIZE, socket == 0U ? 8U : 0U);
-        write8(block, SN_TXBUF_SIZE, socket == 0U ? 8U : 0U);
+        write8(block, SN_RXBUF_SIZE, socket < APP_HTTP_SOCKETS ? 2U : 0U);
+        write8(block, SN_TXBUF_SIZE, socket < APP_HTTP_SOCKETS ? 2U : 0U);
     }
     read_bytes(COMMON_BLOCK, 0x000FU, check, sizeof(check));
     for (socket = 0U; socket < 4U; ++socket)
@@ -164,39 +168,61 @@ uint32_t w5500_link_speed_mbps(void)
     return (phy & 2U) != 0U ? 100U : 10U;
 }
 
-uint8_t w5500_state(void)
+uint8_t w5500_state(uint8_t socket)
 {
-    return read8(SOCKET_BLOCK, SN_SR);
+    if (socket >= APP_HTTP_SOCKETS)
+    {
+        return W5500_CLOSED;
+    }
+    return read8(SOCKET_BLOCK(socket), SN_SR);
 }
 
-void w5500_close(void)
+void w5500_close(uint8_t socket)
 {
-    (void)command(0x10U);
-    write8(SOCKET_BLOCK, SN_IR, 0xFFU);
+    if (socket >= APP_HTTP_SOCKETS)
+    {
+        return;
+    }
+    sending[socket] = false;
+    (void)command(socket, 0x10U);
+    write8(SOCKET_BLOCK(socket), SN_IR, 0xFFU);
 }
 
-bool w5500_listen(void)
+bool w5500_listen(uint8_t socket)
 {
-    w5500_close();
-    write8(SOCKET_BLOCK, SN_MR, 0x01U); /* TCP */
-    write16(SN_PORT, APP_HTTP_PORT);
-    if (!command(0x01U) || (w5500_state() != 0x13U))
+    if (socket >= APP_HTTP_SOCKETS)
+    {
+        return false;
+    }
+    w5500_close(socket);
+    write8(SOCKET_BLOCK(socket), SN_MR, 0x01U); /* TCP */
+    write16(socket, SN_PORT, APP_HTTP_PORT);
+    if (!command(socket, 0x01U) || (w5500_state(socket) != 0x13U))
     {
         io_ok = false;
         return false;
     }
-    return command(0x02U);
+    return command(socket, 0x02U);
 }
 
-void w5500_disconnect(void)
+void w5500_disconnect(uint8_t socket)
 {
-    (void)command(0x08U);
+    if (socket >= APP_HTTP_SOCKETS)
+    {
+        return;
+    }
+    (void)command(socket, 0x08U);
 }
 
-int32_t w5500_receive(uint8_t *data, size_t capacity)
+int32_t w5500_receive(uint8_t socket, uint8_t *data, size_t capacity)
 {
-    uint16_t count = stable16(SN_RX_RSR);
+    uint16_t count;
     uint16_t pointer;
+    if (socket >= APP_HTTP_SOCKETS)
+    {
+        return -1;
+    }
+    count = stable16(socket, SN_RX_RSR);
     if (!io_ok)
     {
         return -1;
@@ -214,11 +240,11 @@ int32_t w5500_receive(uint8_t *data, size_t capacity)
     {
         return 0;
     }
-    pointer = read16(SN_RX_RD);
+    pointer = read16(socket, SN_RX_RD);
     /* W5500 wraps its ring buffer internally, including the 16-bit pointer wrap. */
-    read_bytes(RX_BLOCK, pointer, data, count);
-    write16(SN_RX_RD, (uint16_t)(pointer + count));
-    if (!command(0x40U))
+    read_bytes(RX_BLOCK(socket), pointer, data, count);
+    write16(socket, SN_RX_RD, (uint16_t)(pointer + count));
+    if (!command(socket, 0x40U))
     {
         return -1;
     }
@@ -226,63 +252,84 @@ int32_t w5500_receive(uint8_t *data, size_t capacity)
     return (int32_t)count;
 }
 
-bool w5500_send(const void *data, size_t size)
+int32_t w5500_send_start(uint8_t socket, const void *data, size_t size)
 {
     uint16_t pointer;
-    uint32_t start = board_millis();
-    if ((size == 0U) || (size > APP_SOCKET_BUFFER_SIZE))
+    uint16_t free_size;
+    uint8_t state;
+    if (!io_ok || (socket >= APP_HTTP_SOCKETS) || (size == 0U) || (size > APP_SOCKET_BUFFER_SIZE))
     {
-        return false;
+        return -1;
     }
-    while (io_ok && (stable16(SN_TX_FSR) < size))
+    if (sending[socket])
     {
-        if ((uint32_t)(board_millis() - start) >= 1000U)
-        {
-            ++tx_timeouts;
-            return false;
-        }
-        if ((w5500_state() != W5500_ESTABLISHED) && (w5500_state() != W5500_CLOSE_WAIT))
-        {
-            return false;
-        }
+        return 0;
     }
+    state = w5500_state(socket);
+    if ((state != W5500_ESTABLISHED) && (state != W5500_CLOSE_WAIT))
+    {
+        return -1;
+    }
+    free_size = stable16(socket, SN_TX_FSR);
     if (!io_ok)
     {
-        return false;
+        return -1;
     }
-    pointer = read16(SN_TX_WR);
-    write_bytes(TX_BLOCK, pointer, data, size);
-    write16(SN_TX_WR, (uint16_t)(pointer + size));
-    write8(SOCKET_BLOCK, SN_IR, 0x18U); /* Clear previous SEND_OK/TIMEOUT. */
-    if (!command(0x20U))
+    if (free_size < size)
     {
-        return false;
+        return 0;
     }
-    start = board_millis();
-    while (io_ok)
+    pointer = read16(socket, SN_TX_WR);
+    write_bytes(TX_BLOCK(socket), pointer, data, size);
+    write16(socket, SN_TX_WR, (uint16_t)(pointer + size));
+    write8(SOCKET_BLOCK(socket), SN_IR, 0x18U);
+    if (!command(socket, 0x20U))
     {
-        const uint8_t irq = read8(SOCKET_BLOCK, SN_IR);
-        if ((irq & 0x08U) != 0U)
-        {
-            ++tx_timeouts;
-            return false;
-        }
-        if ((irq & 0x10U) != 0U)
-        {
-            write8(SOCKET_BLOCK, SN_IR, 0x10U);
-            if (io_ok)
-            {
-                tx_bytes += (uint32_t)size;
-            }
-            return io_ok;
-        }
-        if ((uint32_t)(board_millis() - start) >= 1000U)
-        {
-            ++tx_timeouts;
-            return false;
-        }
+        return -1;
     }
-    return false;
+    sending[socket] = true;
+    send_started[socket] = board_millis();
+    send_size[socket] = (uint32_t)size;
+    return 1;
+}
+
+int32_t w5500_send_poll(uint8_t socket)
+{
+    uint8_t irq;
+    uint8_t state;
+    if (!io_ok || (socket >= APP_HTTP_SOCKETS) || !sending[socket])
+    {
+        return -1;
+    }
+    irq = read8(SOCKET_BLOCK(socket), SN_IR);
+    if (!io_ok)
+    {
+        return -1;
+    }
+    if (((irq & 0x08U) != 0U) || ((uint32_t)(board_millis() - send_started[socket]) >= 1000U))
+    {
+        ++tx_timeouts;
+        sending[socket] = false;
+        return -1;
+    }
+    if ((irq & 0x10U) != 0U)
+    {
+        write8(SOCKET_BLOCK(socket), SN_IR, 0x10U);
+        sending[socket] = false;
+        if (!io_ok)
+        {
+            return -1;
+        }
+        tx_bytes += send_size[socket];
+        return 1;
+    }
+    state = w5500_state(socket);
+    if ((state != W5500_ESTABLISHED) && (state != W5500_CLOSE_WAIT))
+    {
+        sending[socket] = false;
+        return -1;
+    }
+    return io_ok ? 0 : -1;
 }
 
 static uint16_t diagnostic_read16(uint8_t block, uint16_t address, bool changing)

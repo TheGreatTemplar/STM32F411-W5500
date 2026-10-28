@@ -11,6 +11,8 @@ let ledOn = false;
 let failCommand = false;
 let adcOk = true;
 let failDiagnostics = false;
+let failSpi = false;
+let failSpiTransport = false;
 function createElement()
 {
     return {textContent: '', className: '', disabled: true, open: false, children: [],
@@ -57,12 +59,24 @@ const context = vm.createContext({
     async fetch(url, options)
     {
         requests.push({url, options});
+        if (url === '/api/spi')
+        {
+            assert.equal(options.method, 'POST');
+            assert.equal(options.headers['X-Device-Control'], '1');
+            if (failSpiTransport)
+            {
+                throw new Error('Network failure');
+            }
+            return {ok: !failSpi, text: async () => 'Invalid SPI command',
+                json: async () => ({bus: 2, mode: 3, hz: 1000000, count: 4,
+                    tx: '9F000000', rx: 'EF401500'})};
+        }
         if (url === '/api/diagnostics')
         {
             return {ok: !failDiagnostics, status: failDiagnostics ? 503 : 200,
                 json: async () => ({version: 4, phy: 7, mode: 0, interrupts: 128,
                     ip: '172.16.236.220', mask: '255.255.255.0', gateway: '172.16.236.1',
-                    mac: '02:41:11:EC:00:DC', http_port: 5025, http_sockets: 1,
+                    mac: '02:41:11:EC:00:DC', http_port: 5025, http_sockets: 4,
                     retry_ms: 200, retry_count: 3, init_attempts: 1, spi_errors: 0,
                     tx_timeouts: 0, rx_bytes: 200, tx_bytes: 2000, uptime_ms: 5000,
                     sockets: Array.from({length: 8}, (_, id) => ({id, state: id ? 0 : 23,
@@ -141,7 +155,52 @@ async function test()
     assert.equal(elements.get('diag-refresh').disabled, false);
     elements.get('diag-close').click();
     assert.equal(elements.get('diagnostics').open, false);
-    console.log('Web UI: LED, serialized requests, diagnostic dialog, refresh and failure recovery passed');
+    for (const id of ['spi-format', 'spi-command', 'spi-hz', 'spi-mode-0', 'spi-mode-1',
+        'spi-mode-2', 'spi-mode-3', 'spi-lsb', 'spi-cs-high'])
+    {
+        context.document.getElementById(id);
+    }
+    elements.get('spi-format').value = 'hex';
+    elements.get('spi-command').value = '9F 00 00 00';
+    elements.get('spi-hz').value = '1000000';
+    elements.get('spi-mode-3').checked = true;
+    elements.get('spi-lsb').checked = false;
+    elements.get('spi-cs-high').checked = false;
+    elements.get('spi-send').click();
+    assert.equal(elements.get('spi-send').disabled, true);
+    const beforeSpi = requests.length;
+    await vm.runInContext('update()', context);
+    assert.equal(requests.length, beforeSpi + 1);
+    assert.equal(requests.at(-1).url, '/api/spi');
+    assert.equal(requests.at(-1).options.body,
+        'bus=2 mode=3 hz=1000000 lsb=0 cs_high=0 format=hex\n9F 00 00 00');
+    assert.equal(elements.get('spi-tx').textContent, '9F 00 00 00');
+    assert.equal(elements.get('spi-rx').textContent, 'EF 40 15 00');
+    assert.equal(elements.get('spi-send').disabled, false);
+    elements.get('spi-command').value = '9';
+    elements.get('spi-send').click();
+    assert.match(elements.get('spi-message').textContent, /HEX/);
+    elements.get('spi-command').value = '00 '.repeat(257);
+    elements.get('spi-send').click();
+    assert.match(elements.get('spi-message').textContent, /256/);
+    elements.get('spi-format').value = 'ascii';
+    elements.get('spi-command').value = 'АБВ';
+    elements.get('spi-send').click();
+    assert.match(elements.get('spi-message').textContent, /ASCII/);
+    elements.get('spi-command').value = '*IDN?';
+    failSpi = true;
+    elements.get('spi-send').click();
+    await vm.runInContext('update()', context);
+    assert.match(elements.get('spi-message').textContent, /Invalid SPI/);
+    failSpi = false;
+    failSpiTransport = true;
+    elements.get('spi-send').click();
+    await vm.runInContext('update()', context);
+    assert.match(elements.get('spi-message').textContent, /могла выполниться/);
+    const afterFailure = requests.filter((r) => r.url === '/api/spi').length;
+    await vm.runInContext('update()', context);
+    assert.equal(requests.filter((r) => r.url === '/api/spi').length, afterFailure);
+    console.log('Web UI: LED, diagnostics, SPI validation, TX/RX, queued requests and no automatic SPI retry passed');
 }
 
 test().catch((error) =>

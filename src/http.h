@@ -16,7 +16,8 @@ typedef enum
     HTTP_LED_ON,
     HTTP_LED_OFF,
     HTTP_POST_REQUIRED,
-    HTTP_DIAGNOSTICS
+    HTTP_DIAGNOSTICS,
+    HTTP_SPI
 } http_route_t;
 
 typedef struct

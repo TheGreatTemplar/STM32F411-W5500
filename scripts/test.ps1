@@ -33,7 +33,7 @@ try
     }
     & (Join-Path $Toolchain 'armlink.exe') --cpu Cortex-M4 --library_type=microlib `
         --entry test_entry --ro-base 0x08000000 --rw-base 0x20000000 `
-        --output build/http_test.axf build/http_mock.o build/http.o build/http_parse.o
+        --output build/http_test.axf build/http_mock.o build/http.o build/http_parse.o build/spi_console.o
     if ($LASTEXITCODE -ne 0)
     {
         throw 'HTTP mock link failed'

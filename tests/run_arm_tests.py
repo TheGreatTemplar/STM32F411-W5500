@@ -5,12 +5,13 @@ Run after scripts/build.ps1 and the mock build described in tests/README.md.
 """
 from pathlib import Path
 import sys
+import struct
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "build/test_deps"))
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS
-from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_ARM_REG_R1
+from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_PC
 
 
 def load_image(path):
@@ -32,7 +33,8 @@ def load_image(path):
 
 def call(uc, address):
     uc.reg_write(UC_ARM_REG_LR, 0x10000001)
-    uc.emu_start(address | 1, 0x10000000, timeout=2000000, count=2000000)
+    uc.emu_start(address | 1, 0x10000000, timeout=5000000, count=20000000)
+    assert uc.reg_read(UC_ARM_REG_PC) == 0x10000000, 'ARM call did not return within the execution limit'
     return uc.reg_read(UC_ARM_REG_R0)
 
 
@@ -47,6 +49,9 @@ for on, expected in [(1, 1 << 29), (0, 1 << 13)]:
     call(uc, symbols["board_led"])
     assert int.from_bytes(uc.mem_read(0x40020818, 4), "little") == expected
 print("PC13 LED: active-low GPIO readback and BSRR writes passed")
+spi_body = b"bus=2 mode=0 hz=1000000 lsb=0 cs_high=0 format=hex\n9F 00 00 00"
+spi_request = (b"POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: " +
+               str(len(spi_body)).encode() + b"\r\n\r\n" + spi_body)
 requests = [
     (b"GET / HTTP/1.1\r\nHost: board\r\n\r\n", 1),
     (b"GET /api/adc HTTP/1.1\r\nHost: board\r\n\r\n", 2),
@@ -72,6 +77,10 @@ requests = [
     (b"GET /api/diagnostics HTTP/1.1\r\n\r\n", 9),
     (b"GET /api/diagnosticsX HTTP/1.1\r\n\r\n", 3),
     (b"POST /api/diagnostics HTTP/1.1\r\n\r\n", 5),
+    (spi_request, 10),
+    (spi_request[:-1], 0),
+    (b"GET /api/spi HTTP/1.1\r\n\r\n", 8),
+    (b"POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 9999999999999999\r\n\r\n", 4),
 ]
 count = 0
 for request, expected in requests:
@@ -81,7 +90,9 @@ for request, expected in requests:
     result = call(uc, symbols["http_parse"])
     assert result == expected, (request, result, expected)
     count += 1
-for request, _ in requests[:3] + requests[10:12] + requests[-3:-2]:
+for request, route in requests:
+    if route not in {1, 2, 6, 7, 9, 10}:
+        continue
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
         uc.reg_write(UC_ARM_REG_R0, 0x20010000)
@@ -89,11 +100,87 @@ for request, _ in requests[:3] + requests[10:12] + requests[-3:-2]:
         assert call(uc, symbols["http_parse"]) == 0, (request, length)
         count += 1
 print(f"HTTP parser: {count} cases passed (including every fragmented prefix)")
+
+def parse_spi(body):
+    uc.mem_write(0x20010000, body or b"\0")
+    uc.reg_write(UC_ARM_REG_R0, 0x20010000)
+    uc.reg_write(UC_ARM_REG_R1, len(body))
+    from unicorn.arm_const import UC_ARM_REG_R2
+    uc.reg_write(UC_ARM_REG_R2, 0x20018000)
+    result = call(uc, symbols["spi_command_parse"])
+    return result, bytes(uc.mem_read(0x20018000, 276))
+
+spi_cases = 0
+for mode in range(4):
+    for hz in [62500, 125000, 250000, 500000, 1000000, 2000000, 4000000]:
+        body = f"bus=2 mode={mode} hz={hz} lsb=1 cs_high=0 format=hex\n9F 00 aA FF".encode()
+        ok, command = parse_spi(body)
+        assert ok and struct.unpack_from('<5I', command) == (hz, mode, 1, 0, 4)
+        assert command[20:24] == b"\x9F\x00\xAA\xFF"
+        spi_cases += 1
+        # Exercise the actual SPI2 register code with immediately ready mock registers.
+        uc.mem_map(0x40003000, 0x1000) if spi_cases == 1 else None
+        uc.mem_map(0x40013000, 0x1000) if spi_cases == 1 else None
+        uc.mem_map(0x40023000, 0x1000) if spi_cases == 1 else None
+        uc.mem_write(0x40003808, (3).to_bytes(4, 'little'))  # RXNE | TXE
+        uc.mem_write(0x40013000, (0x035C).to_bytes(4, 'little'))
+        uc.reg_write(UC_ARM_REG_R0, 0x20018000)
+        uc.reg_write(UC_ARM_REG_R1, 0x20018400)
+        assert call(uc, symbols['board_spi_console']) == 1
+        assert bytes(uc.mem_read(0x20018400, 4)) == command[20:24]
+        cr1 = int.from_bytes(uc.mem_read(0x40003800, 4), 'little')
+        assert cr1 & 3 == mode and cr1 & 128 and not cr1 & 64
+        assert 16000000 // (2 << ((cr1 >> 3) & 7)) == hz
+        assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 12
+        assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
+
+base = b"bus=2 mode=0 hz=1000000 lsb=0 cs_high=0 format=hex\n"
+assert parse_spi(base + b'00 ' * 256)[0] == 1
+assert parse_spi(base + b'00 ' * 257)[0] == 0
+for bad in [b'', base, base + b'9', base + b'GG',
+            base.replace(b'bus=2', b'bus=1') + b'00',
+            base.replace(b'mode=0', b'mode=4') + b'00',
+            base.replace(b'hz=1000000', b'hz=333333') + b'00',
+            base.replace(b'lsb=0', b'lsb=2') + b'00',
+            base.replace(b'cs_high=0', b'cs_high=9') + b'00',
+            base.replace(b'bus=2', b'bus=2 bus=2') + b'00',
+            base.replace(b'bus=2', b'hz=2') + b'00',
+            base.replace(b'hz=1000000', b'hz=99999999999999999999999') + b'00']:
+    assert parse_spi(bad)[0] == 0, bad
+ascii_base = base.replace(b'format=hex', b'format=ascii')
+assert parse_spi(ascii_base + b'*IDN?\n')[1][20:26] == b'*IDN?\n'
+assert parse_spi(ascii_base + b'\xD0\x90')[0] == 0
+assert parse_spi(ascii_base + b'\x00')[0] == 0
+ok, command = parse_spi(base.replace(b'cs_high=0', b'cs_high=1') + b'55 AA')
+assert ok
+uc.reg_write(UC_ARM_REG_R0, 0x20018000)
+uc.reg_write(UC_ARM_REG_R1, 0x20018400)
+assert call(uc, symbols['board_spi_console']) == 1
+assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 28
+assert not int.from_bytes(uc.mem_read(0x40003800, 4), 'little') & 128  # MSB first
+from unicorn import UC_HOOK_CODE
+steps = [0]
+
+def advance_tick(machine, address, size, data):
+    steps[0] += 1
+    if steps[0] % 64 == 0:
+        tick = int.from_bytes(machine.mem_read(symbols['tick_ms'], 4), 'little')
+        machine.mem_write(symbols['tick_ms'], (tick + 1).to_bytes(4, 'little'))
+
+uc.mem_write(0x40003808, (0).to_bytes(4, 'little'))  # Peripheral stops responding.
+hook = uc.hook_add(UC_HOOK_CODE, advance_tick)
+uc.reg_write(UC_ARM_REG_R0, 0x20018000)
+uc.reg_write(UC_ARM_REG_R1, 0x20018400)
+assert call(uc, symbols['board_spi_console']) == 0
+uc.hook_del(hook)
+assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 28
+assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
+print('SPI console: 28 mode/rate configurations, register loopback, limits and invalid input passed')
 uc, symbols = load_image(root / "build/w5500_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"W5500 mock failed at C source line {result}"
-print("W5500 mock: static config, listen, RX/TX ring wrap, timeouts and recovery passed")
+print("W5500 mock: four sockets, static config, RX/TX ring wrap, nonblocking sends and recovery passed")
 uc, symbols = load_image(root / "build/http_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"HTTP integration mock failed at C source line {result}"
-print("HTTP integration: HTML/JSON framing, 404/405/431, ADC, LED commands and connection recovery passed")
+print("HTTP integration: four clients, stalled connection isolation, ADC/LED/SPI and response framing passed")

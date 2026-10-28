@@ -38,6 +38,15 @@
         button:hover { filter: brightness(1.15); }
         button:disabled { opacity: 0.45; cursor: wait; }
         #led-message { font-size: 13px; min-height: 21px; margin: 12px 0 0; }
+        .spi-control { margin-top: 20px; padding: 24px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
+        .spi-settings { display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0; align-items: center; }
+        fieldset { border: 1px solid #476273; border-radius: 10px; padding: 12px; }
+        legend, .hint { color: #a6b7c7; font-size: 13px; }
+        label { display: inline-flex; align-items: center; gap: 6px; }
+        select, textarea { color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 10px; font: inherit; }
+        textarea { display: block; width: 100%; min-height: 100px; font-family: ui-monospace,monospace; resize: vertical; }
+        pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; padding: 12px; background: #101923; border-radius: 8px; }
+        #spi-message { min-height: 24px; }
         .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
         dialog { width: min(1100px,calc(100% - 24px)); max-height: 90vh; padding: 24px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 18px; }
         dialog::backdrop { background: #050b13bb; }
@@ -83,6 +92,30 @@
             <div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div>
             <p id="led-message" role="status"></p>
         </section>
+        <section class="spi-control" aria-label="SPI-консоль">
+            <h2>SPI2 · внешнее устройство</h2>
+            <p class="hint">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p>
+            <div class="spi-settings">
+                <fieldset><legend>Режим SPI</legend>
+                    <label><input type="radio" name="spi-mode" id="spi-mode-0" checked>0</label>
+                    <label><input type="radio" name="spi-mode" id="spi-mode-1">1</label>
+                    <label><input type="radio" name="spi-mode" id="spi-mode-2">2</label>
+                    <label><input type="radio" name="spi-mode" id="spi-mode-3">3</label>
+                    <div class="hint">0: CPOL=0 CPHA=0 · 1: 0/1 · 2: 1/0 · 3: 1/1</div>
+                </fieldset>
+                <label>Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option></select></label>
+                <label><input type="checkbox" id="spi-lsb">LSB первым</label>
+                <label><input type="checkbox" id="spi-cs-high">CS активен HIGH</label>
+                <label>Команда<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label>
+            </div>
+            <label for="spi-command">Передаваемые данные · до 256 байт</label>
+            <textarea id="spi-command" spellcheck="false" aria-label="Команда SPI">9F 00 00 00</textarea>
+            <p class="hint">HEX: пары цифр, например 9F 00 00 00. ASCII: символы передаются буквально. Один CS на всю команду, 8 бит на кадр. Для чтения добавь нужное число 00 или FF.</p>
+            <button type="button" id="spi-send">Передать SPI</button>
+            <p id="spi-message" role="status"></p>
+            <div class="hint">TX</div><pre id="spi-tx">—</pre>
+            <div class="hint">RX</div><pre id="spi-rx">—</pre>
+        </section>
         <footer>
             <p>Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.</p>
             <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
@@ -106,6 +139,58 @@
         let pendingLed = null;
         let ledBusy = false;
         let pendingDiagnostics = false;
+        let pendingSpi = null;
+        let spiBusy = false;
+        function queueSpi()
+        {
+            if (spiBusy)
+            {
+                return;
+            }
+            const text = get('spi-command').value;
+            const format = get('spi-format').value;
+            let size;
+            if (format === 'hex')
+            {
+                const hex = text.replace(/\s/g, '');
+                if (!/^(?:[0-9a-fA-F]{2})+$/.test(hex))
+                {
+                    get('spi-message').textContent = 'HEX: введи полные пары цифр, например 9F 00 00 00.';
+                    return;
+                }
+                size = hex.length / 2;
+            }
+            else
+            {
+                if (!/^[\x01-\x7F]+$/.test(text))
+                {
+                    get('spi-message').textContent = 'ASCII: разрешены только символы с кодами 1…127.';
+                    return;
+                }
+                size = text.length;
+            }
+            if (size > 256)
+            {
+                get('spi-message').textContent = 'Максимум 256 байт за одну транзакцию.';
+                return;
+            }
+            let mode = 0;
+            for (let i = 0; i < 4; ++i)
+            {
+                if (get('spi-mode-' + i).checked)
+                {
+                    mode = i;
+                }
+            }
+            pendingSpi = 'bus=2 mode=' + mode + ' hz=' + get('spi-hz').value +
+                ' lsb=' + (get('spi-lsb').checked ? 1 : 0) +
+                ' cs_high=' + (get('spi-cs-high').checked ? 1 : 0) + ' format=' + format + '\n' + text;
+            spiBusy = true;
+            get('spi-send').disabled = true;
+            get('spi-rx').textContent = '—';
+            get('spi-message').textContent = 'Отправка SPI-команды…';
+        }
+        get('spi-send').addEventListener('click', queueSpi);
         function diagnosticCards(id, items)
         {
             const target = get(id);
@@ -213,7 +298,12 @@
             const timeout = setTimeout(() => controller.abort(), 1500);
             const command = pendingLed;
             pendingLed = null;
-            const diagnostics = command === null && pendingDiagnostics;
+            const spi = command === null ? pendingSpi : null;
+            if (spi !== null)
+            {
+                pendingSpi = null;
+            }
+            const diagnostics = command === null && spi === null && pendingDiagnostics;
             if (diagnostics)
             {
                 pendingDiagnostics = false;
@@ -222,6 +312,21 @@
             let haveFreshState = false;
             try
             {
+                if (spi !== null)
+                {
+                    const reply = await fetch('/api/spi', {method: 'POST',
+                        headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'},
+                        body: spi, signal: controller.signal});
+                    if (!reply.ok)
+                    {
+                        throw new Error('SPI: ' + (await reply.text()).trim());
+                    }
+                    const result = await reply.json();
+                    get('spi-tx').textContent = result.tx.match(/../g).join(' ');
+                    get('spi-rx').textContent = result.rx.match(/../g).join(' ');
+                    get('spi-message').textContent = 'Передано ' + result.count + ' байт · режим ' + result.mode + ' · ' + result.hz + ' Гц';
+                    return;
+                }
                 if (diagnostics)
                 {
                     const reply = await fetch('/api/diagnostics', {cache: 'no-store', signal: controller.signal});
@@ -278,6 +383,12 @@
             }
             catch (error)
             {
+                if (spi !== null)
+                {
+                    get('spi-message').textContent = error.message.startsWith('SPI:') ? error.message :
+                        'Нет подтверждения: команда могла выполниться. Автоповтора нет; проверь устройство перед повторной передачей.';
+                    return;
+                }
                 if (diagnostics)
                 {
                     get('diag-message').textContent = 'Не удалось обновить снимок. Предыдущие данные могут быть устаревшими.';
@@ -301,6 +412,11 @@
             finally
             {
                 clearTimeout(timeout);
+                if (spi !== null)
+                {
+                    spiBusy = false;
+                    get('spi-send').disabled = false;
+                }
                 if (diagnostics)
                 {
                     get('diag-refresh').disabled = false;

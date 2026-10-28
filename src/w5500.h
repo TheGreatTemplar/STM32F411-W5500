@@ -49,11 +49,14 @@ bool w5500_init(void);
 bool w5500_healthy(void);
 bool w5500_link(void);
 uint32_t w5500_link_speed_mbps(void);
-uint8_t w5500_state(void);
-bool w5500_listen(void);
-void w5500_close(void);
-void w5500_disconnect(void);
-int32_t w5500_receive(uint8_t *data, size_t capacity);
-bool w5500_send(const void *data, size_t size);
+uint8_t w5500_state(uint8_t socket);
+bool w5500_listen(uint8_t socket);
+void w5500_close(uint8_t socket);
+void w5500_disconnect(uint8_t socket);
+int32_t w5500_receive(uint8_t socket, uint8_t *data, size_t capacity);
+/* Start: 1 = queued, 0 = no buffer space yet, -1 = error.
+ * Poll:  1 = acknowledged, 0 = pending, -1 = error/timeout. */
+int32_t w5500_send_start(uint8_t socket, const void *data, size_t size);
+int32_t w5500_send_poll(uint8_t socket);
 
 #endif

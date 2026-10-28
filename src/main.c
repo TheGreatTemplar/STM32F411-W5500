@@ -37,7 +37,11 @@ int main(void)
             }
             else
             {
-                w5500_close();
+                uint8_t socket;
+                for (socket = 0U; socket < APP_HTTP_SOCKETS; ++socket)
+                {
+                    w5500_close(socket);
+                }
                 http_reset();
             }
         }

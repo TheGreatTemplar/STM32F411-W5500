@@ -1,15 +1,26 @@
 #include "config.h"
 #include "http.h"
+#include "spi_console.h"
 #include "w5500.h"
+#include <stdio.h>
 #include <string.h>
 
 static uint32_t now;
-static uint8_t state;
+static uint8_t state[4];
+static bool hold_tx[4];
+static bool mock_sending[4];
+static uint32_t spi_calls;
+static bool fail_console;
+static char secondary_input[3][2048];
+static size_t secondary_input_size[3];
+static size_t secondary_input_offset[3];
+static char secondary_output[3][4096];
+static size_t secondary_output_size[3];
 static char input[2048];
 static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
-static char output[24576];
+static char output[32768];
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
@@ -76,30 +87,45 @@ uint32_t w5500_link_speed_mbps(void)
     return link_speed_mbps;
 }
 
-uint8_t w5500_state(void)
+bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
 {
-    return state;
+    size_t i;
+    ++spi_calls;
+    for (i = 0U; i < command->size; ++i)
+    {
+        rx[i] = command->tx[i] ^ 0xFFU;
+    }
+    return !fail_console;
 }
 
-bool w5500_listen(void)
+uint8_t w5500_state(uint8_t socket)
 {
-    state = W5500_LISTEN;
+    return state[socket];
+}
+
+bool w5500_listen(uint8_t socket)
+{
+    state[socket] = W5500_LISTEN;
     return true;
 }
 
-void w5500_close(void)
+void w5500_close(uint8_t socket)
 {
-    state = W5500_CLOSED;
+    state[socket] = W5500_CLOSED;
+    mock_sending[socket] = false;
 }
 
-void w5500_disconnect(void)
+void w5500_disconnect(uint8_t socket)
 {
-    state = 0x18U;
+    state[socket] = 0x18U;
 }
 
-int32_t w5500_receive(uint8_t *data, size_t capacity)
+int32_t w5500_receive(uint8_t socket, uint8_t *data, size_t capacity)
 {
-    size_t count = input_size - input_offset;
+    const char *source = socket == 0U ? input : secondary_input[socket - 1U];
+    size_t *offset = socket == 0U ? &input_offset : &secondary_input_offset[socket - 1U];
+    const size_t size = socket == 0U ? input_size : secondary_input_size[socket - 1U];
+    size_t count = size - *offset;
     if (count > capacity)
     {
         count = capacity;
@@ -108,21 +134,56 @@ int32_t w5500_receive(uint8_t *data, size_t capacity)
     {
         count = fragment_size;
     }
-    memcpy(data, input + input_offset, count);
-    input_offset += count;
+    memcpy(data, source + *offset, count);
+    *offset += count;
     return (int32_t)count;
 }
 
-bool w5500_send(const void *data, size_t size)
+int32_t w5500_send_start(uint8_t socket, const void *data, size_t size)
 {
-    if (fail_send || (output_size + size >= sizeof(output)))
+    char *destination = socket == 0U ? output : secondary_output[socket - 1U];
+    size_t *offset = socket == 0U ? &output_size : &secondary_output_size[socket - 1U];
+    const size_t capacity = socket == 0U ? sizeof(output) : sizeof(secondary_output[0]);
+    if (fail_send || (*offset + size >= capacity))
     {
-        return false;
+        return -1;
     }
-    memcpy(output + output_size, data, size);
-    output_size += size;
-    output[output_size] = '\0';
-    return true;
+    if (mock_sending[socket])
+    {
+        return 0;
+    }
+    memcpy(destination + *offset, data, size);
+    *offset += size;
+    destination[*offset] = '\0';
+    mock_sending[socket] = true;
+    return 1;
+}
+
+int32_t w5500_send_poll(uint8_t socket)
+{
+    if (!mock_sending[socket])
+    {
+        return -1;
+    }
+    if (hold_tx[socket])
+    {
+        return 0;
+    }
+    mock_sending[socket] = false;
+    return 1;
+}
+
+static void pump(const adc_snapshot_t *adc)
+{
+    uint32_t i;
+    for (i = 0U; i < 100U; ++i)
+    {
+        http_poll(adc);
+        if ((state[0] == 0x18U) || (state[0] == W5500_CLOSED))
+        {
+            return;
+        }
+    }
 }
 
 static void prepare(const char *text)
@@ -137,7 +198,15 @@ static void prepare(const char *text)
     fail_send = false;
     fail_diagnostics = false;
     link_speed_mbps = 100U;
-    state = W5500_ESTABLISHED;
+    memset(state, W5500_LISTEN, sizeof(state));
+    state[0] = W5500_ESTABLISHED;
+    memset(hold_tx, 0, sizeof(hold_tx));
+    memset(mock_sending, 0, sizeof(mock_sending));
+    memset(secondary_input_size, 0, sizeof(secondary_input_size));
+    memset(secondary_input_offset, 0, sizeof(secondary_input_offset));
+    memset(secondary_output_size, 0, sizeof(secondary_output_size));
+    memset(secondary_output, 0, sizeof(secondary_output));
+    fail_console = false;
     http_reset();
 }
 
@@ -179,6 +248,7 @@ int test_entry(void)
     {
         http_poll(&adc);
     }
+    pump(&adc);
     CHECK(strstr(output, "HTTP/1.1 200 OK") != NULL);
     CHECK(strstr(output, "\"raw\":[0,4095]") != NULL);
     CHECK(strstr(output, "\"mv\":[0,3300]") != NULL);
@@ -186,70 +256,69 @@ int test_entry(void)
     CHECK(strstr(output, "\"led_on\":false") != NULL);
     CHECK(strstr(output, "\"link\":true,\"link_speed_mbps\":100") != NULL);
     CHECK(framing_ok());
-    CHECK(state == 0x18U);
+    CHECK(state[0] == 0x18U);
     now = APP_REQUEST_TIMEOUT_MS;
-    http_poll(&adc);
-    CHECK(state == W5500_CLOSED);
-    http_poll(&adc);
-    CHECK(state == W5500_LISTEN);
+    pump(&adc);
+    CHECK(state[0] == W5500_CLOSED);
+    pump(&adc);
+    CHECK(state[0] == W5500_LISTEN);
 
     prepare("GET /api/adc HTTP/1.1\r\n\r\n");
     link_speed_mbps = 10U;
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "\"link\":true,\"link_speed_mbps\":10") != NULL);
     CHECK(framing_ok());
 
     prepare("GET /api/adc HTTP/1.1\r\n\r\n");
     link_speed_mbps = 0U;
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "\"link\":false,\"link_speed_mbps\":0") != NULL);
     CHECK(framing_ok());
 
     prepare("GET / HTTP/1.1\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "<!doctype html>") != NULL);
     CHECK(strstr(output, "fetch('/api/adc'") != NULL);
     CHECK(framing_ok());
 
     prepare("POST / HTTP/1.1\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "405 Method Not Allowed") != NULL);
     CHECK(strstr(output, "Allow: GET\r\n") != NULL);
     CHECK(framing_ok());
 
     prepare("GET /missing HTTP/1.1\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "404 Not Found") != NULL);
     CHECK(framing_ok());
 
     prepare("GET /api/adc HTTP/1.1\r\n\r\n");
     adc.valid = 0U;
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "\"adc_ok\":false") != NULL);
 
     prepare("GET / HTTP/1.1\r\n");
-    http_poll(&adc);
+    pump(&adc);
     now = APP_REQUEST_TIMEOUT_MS;
-    http_poll(&adc);
-    CHECK(state == W5500_CLOSED && output_size == 0U);
+    pump(&adc);
+    CHECK(state[0] == W5500_CLOSED && output_size == 0U);
 
     prepare("GET / HTTP/1.1\r\n");
-    state = W5500_CLOSE_WAIT;
-    http_poll(&adc);
-    http_poll(&adc);
-    CHECK(state == W5500_CLOSED);
+    state[0] = W5500_CLOSE_WAIT;
+    pump(&adc);
+    CHECK(state[0] == W5500_CLOSED);
 
     prepare("GET / HTTP/1.1\r\n\r\n");
     fail_send = true;
-    http_poll(&adc);
-    CHECK(state == W5500_CLOSED);
+    pump(&adc);
+    CHECK(state[0] == W5500_CLOSED);
 
     prepare("GET / HTTP/1.1\r\nX: ");
     memset(input + input_size, 'a', sizeof(input) - input_size);
     input_size = sizeof(input);
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "431 Request Header Fields Too Large") != NULL);
-    CHECK(state == W5500_CLOSED);
+    CHECK(state[0] == 0x18U);
     CHECK(framing_ok());
     prepare("POST /api/led/on HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 0\r\n\r\n");
     fragment_size = 1U;
@@ -258,40 +327,41 @@ int test_entry(void)
         http_poll(&adc);
         CHECK(led_writes == (i + 1U == input_size ? 1U : 0U));
     }
+    pump(&adc);
     CHECK(led_on && led_writes == 1U);
     CHECK(strstr(output, "{\"led_on\":true}") != NULL);
     CHECK(framing_ok());
 
     prepare("GET /api/adc HTTP/1.1\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "\"led_on\":true") != NULL);
     CHECK(led_on && led_writes == 1U);
 
     prepare("GET /api/led/off HTTP/1.1\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "405 Method Not Allowed") != NULL);
     CHECK(strstr(output, "Allow: POST\r\n") != NULL);
     CHECK(led_on && led_writes == 1U);
 
     prepare("POST /api/led/off HTTP/1.1\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "400 Bad Request") != NULL);
     CHECK(led_on && led_writes == 1U);
 
     prepare("POST /api/led/off HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 1\r\n\r\nx");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "400 Bad Request") != NULL);
     CHECK(led_on && led_writes == 1U);
 
     prepare("POST /api/led/off HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 0\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(!led_on && led_writes == 2U);
     CHECK(strstr(output, "{\"led_on\":false}") != NULL);
     CHECK(framing_ok());
     http_reset();
     CHECK(!led_on && led_writes == 2U);
     prepare("GET /api/diagnostics HTTP/1.1\r\n\r\n");
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "200 OK") != NULL);
     CHECK(strstr(output, "\"version\":4") != NULL);
     CHECK(strstr(output, "\"ip\":\"172.16.236.220\"") != NULL);
@@ -302,8 +372,64 @@ int test_entry(void)
     CHECK(led_writes == 2U);
     prepare("GET /api/diagnostics HTTP/1.1\r\n\r\n");
     fail_diagnostics = true;
-    http_poll(&adc);
+    pump(&adc);
     CHECK(strstr(output, "503 Service Unavailable") != NULL);
     CHECK(framing_ok());
+    prepare("POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 70\r\n\r\n");
+    {
+        const char *body = "bus=2 mode=3 hz=1000000 lsb=1 cs_high=0 format=hex\n9F 00 AA FF";
+        const int length = snprintf(
+            input, sizeof(input),
+            "POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
+            (unsigned long)strlen(body), body);
+        input_size = (size_t)length;
+        fragment_size = 1U;
+        for (i = 0U; i + 1U < input_size; ++i)
+        {
+            http_poll(&adc);
+            CHECK(spi_calls == 0U);
+        }
+        pump(&adc);
+        CHECK(spi_calls == 1U);
+        CHECK(strstr(output, "\"tx\":\"9F00AAFF\",\"rx\":\"60FF5500\"") != NULL);
+        CHECK(framing_ok());
+        for (i = 0U; i < 20U; ++i)
+        {
+            http_poll(&adc);
+        }
+        CHECK(spi_calls == 1U); /* Retransmitting HTTP data must not re-execute SPI. */
+    }
+
+    prepare("GET / HTTP/1.1\r\n"); /* Socket 0 holds an incomplete request. */
+    strcpy(secondary_input[0], "GET /api/adc HTTP/1.1\r\n\r\n");
+    strcpy(secondary_input[1], "GET /api/diagnostics HTTP/1.1\r\n\r\n");
+    strcpy(secondary_input[2], "GET /api/adc HTTP/1.1\r\n\r\n");
+    for (i = 0U; i < 3U; ++i)
+    {
+        secondary_input_size[i] = strlen(secondary_input[i]);
+        state[i + 1U] = W5500_ESTABLISHED;
+    }
+    hold_tx[1] = true; /* One client does not acknowledge its response. */
+    for (i = 0U; i < 100U; ++i)
+    {
+        http_poll(&adc);
+    }
+    CHECK(state[1] == W5500_ESTABLISHED);
+    CHECK(state[2] == 0x18U && state[3] == 0x18U);
+    CHECK(strstr(secondary_output[1], "\"http_sockets\":4") != NULL);
+    CHECK(strstr(secondary_output[2], "\"raw\":[0,4095]") != NULL);
+    CHECK(output_size == 0U);
+    adc.raw[0] = 1234U; /* Already queued replies must retain their own snapshot. */
+    hold_tx[1] = false;
+    for (i = 0U; i < 20U; ++i)
+    {
+        http_poll(&adc);
+    }
+    CHECK(state[1] == 0x18U);
+    CHECK(strstr(secondary_output[0], "\"raw\":[0,4095]") != NULL);
+    CHECK(strstr(secondary_output[0], "\"version\"") == NULL);
+    now = APP_REQUEST_TIMEOUT_MS;
+    http_poll(&adc);
+    CHECK(state[0] == W5500_CLOSED);
     return 0;
 }

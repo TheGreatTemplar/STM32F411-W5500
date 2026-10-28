@@ -5,8 +5,9 @@
 #define APP_SAMPLE_PERIOD_MS 20U
 #define APP_REQUEST_TIMEOUT_MS 2000U
 #define APP_ADC_VREF_MV 3300U
-#define APP_REQUEST_CAPACITY 1536U
-#define APP_SOCKET_BUFFER_SIZE 8192U
+#define APP_REQUEST_CAPACITY 2048U
+#define APP_HTTP_SOCKETS 4U
+#define APP_SOCKET_BUFFER_SIZE 2048U
 
 /* Locally administered unicast MAC. Use a different MAC for each board. */
 #define APP_MAC_ADDRESS                                                                            \

@@ -1,4 +1,5 @@
 #include "board.h"
+#include "spi_console.h"
 
 uint32_t SystemCoreClock = 16000000U;
 static volatile uint32_t tick_ms;
@@ -44,15 +45,22 @@ void board_init(void)
 {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOBEN | RCC_AHB1ENR_GPIOCEN;
     (void)RCC->AHB1ENR;
-    /* Set inactive levels before changing direction. Do not latch unknown 595 data. */
+    /* Set inactive network control levels before changing direction. */
     GPIOA->BSRR = 1UL << 15U; /* W5500 CS */
-    GPIOB->BSRR = (1UL << 10U) | (1UL << (15U + 16U)) | (1UL << (2U + 16U));
+    GPIOB->BSRR = 1UL << (2U + 16U);
     GPIOC->BSRR = 1UL << 13U; /* LED off, active low */
     output_mode(GPIOA, 15U);
-    output_mode(GPIOB, 10U); /* LCD deselected */
-    output_mode(GPIOB, 15U); /* 595 latch stays low */
-    output_mode(GPIOB, 2U);  /* W5500 reset */
+    output_mode(GPIOB, 2U); /* W5500 reset */
     output_mode(GPIOC, 13U);
+    /* Standalone bench: PB12 CS, PB13/14/15 SPI2 AF5. */
+    GPIOB->BSRR = 1UL << 12U;
+    output_mode(GPIOB, 12U);
+    GPIOB->MODER = (GPIOB->MODER & ~0xFC000000UL) | 0xA8000000UL;
+    GPIOB->AFR[1] = (GPIOB->AFR[1] & ~0xFFF00000UL) | 0x55500000UL;
+    GPIOB->OSPEEDR = (GPIOB->OSPEEDR & ~0xFC000000UL) | 0x54000000UL;
+    GPIOB->PUPDR &= ~0xFC000000UL;
+    RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
+    (void)RCC->APB1ENR;
 
     /* PA5/6/7: AF5, SPI1 mode 0 at HSI/16 = 1 MHz. */
     GPIOA->MODER = (GPIOA->MODER & ~0x0000FC00UL) | 0x0000A800UL;
@@ -172,4 +180,91 @@ bool board_adc_read(uint16_t values[2])
         values[channel] = (uint16_t)ADC1->DR;
     }
     return true;
+}
+
+bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
+{
+    uint32_t divider = 16000000U;
+    uint32_t prescaler = 0U;
+    uint32_t cr1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;
+    uint32_t start;
+    size_t i;
+    bool ok = true;
+    if ((command->mode > 3U) || (command->lsb_first > 1U) || (command->cs_high > 1U) ||
+        (command->size == 0U) || (command->size > SPI_CONSOLE_MAX_BYTES))
+    {
+        return false;
+    }
+    do
+    {
+        divider /= 2U;
+        if (divider == command->hz)
+        {
+            break;
+        }
+        ++prescaler;
+    } while (prescaler < 8U);
+    if ((prescaler >= 8U) || (command->hz > 4000000U))
+    {
+        return false;
+    }
+    SPI2->CR1 = 0U;
+    GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
+    if ((command->mode & 2U) != 0U)
+    {
+        cr1 |= SPI_CR1_CPOL;
+    }
+    if ((command->mode & 1U) != 0U)
+    {
+        cr1 |= SPI_CR1_CPHA;
+    }
+    if (command->lsb_first != 0U)
+    {
+        cr1 |= SPI_CR1_LSBFIRST;
+    }
+    SPI2->CR1 = cr1 | (prescaler << 3U) | SPI_CR1_SPE;
+    /* Let the configured idle clock settle before asserting CS. */
+    for (i = 0U; i < 16U; ++i)
+    {
+        __NOP();
+    }
+    GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 12U : 28U);
+    start = board_millis();
+    for (i = 0U; ok && (i < command->size); ++i)
+    {
+        while ((SPI2->SR & SPI_SR_TXE) == 0U)
+        {
+            if ((uint32_t)(board_millis() - start) >= 100U)
+            {
+                ok = false;
+                break;
+            }
+        }
+        if (!ok)
+        {
+            break;
+        }
+        *(__IO uint8_t *)&SPI2->DR = command->tx[i];
+        while ((SPI2->SR & SPI_SR_RXNE) == 0U)
+        {
+            if ((uint32_t)(board_millis() - start) >= 100U)
+            {
+                ok = false;
+                break;
+            }
+        }
+        rx[i] = *(__IO uint8_t *)&SPI2->DR;
+    }
+    while (ok && ((SPI2->SR & SPI_SR_BSY) != 0U))
+    {
+        ok = (uint32_t)(board_millis() - start) < 100U;
+    }
+    GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
+    SPI2->CR1 &= ~SPI_CR1_SPE;
+    if (!ok)
+    {
+        RCC->APB1RSTR |= RCC_APB1RSTR_SPI2RST;
+        RCC->APB1RSTR &= ~RCC_APB1RSTR_SPI2RST;
+    }
+    return ok;
 }
