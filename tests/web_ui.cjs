@@ -8,6 +8,7 @@ const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\n\s*updat
 const elements = new Map();
 const requests = [];
 const timers = new Map();
+const browserStorage = new Map();
 let timerId = 0;
 let holdAdc = null;
 let holdSpi = null;
@@ -52,7 +53,23 @@ const saved = {present: true, ready: true, busy: false, has_saved: true, save_ok
     commands: ['9F 00 00 00', 'AA BB', '', '01 02']};
 function createElement()
 {
-    return {textContent: '', className: '', disabled: true, open: false, children: [],
+    const element = {textContent: '', className: '', disabled: true, open: false, children: [], attributes: {},
+        closest()
+        {
+            return this.id === 'lang-en' || this.id === 'lang-ru';
+        },
+        hasAttribute(name)
+        {
+            return Object.hasOwn(this.attributes, name);
+        },
+        getAttribute(name)
+        {
+            return this.attributes[name];
+        },
+        setAttribute(name, value)
+        {
+            this.attributes[name] = value;
+        },
         selectionStart: 0, selectionEnd: 0,
         setSelectionRange(start, end)
         {
@@ -79,16 +96,62 @@ function createElement()
         {
             this[event] = callback;
         }};
+    Object.defineProperty(element, 'textContent',
+    {
+        get()
+        {
+            return this.firstChild ? this.firstChild.nodeValue : '';
+        },
+        set(value)
+        {
+            this.firstChild = {nodeValue: String(value), parentElement: this};
+        }
+    });
+    return element;
 }
 const context = vm.createContext({
     Date: TestDate,
+    NodeFilter: {SHOW_TEXT: 4},
+    localStorage:
+    {
+        getItem: (key) => browserStorage.get(key) || null,
+        setItem: (key, value) => browserStorage.set(key, value)
+    },
     document:
     {
+        documentElement: {lang: 'ru'},
+        body: {},
+        createTreeWalker()
+        {
+            const nodes = [];
+            const seen = new Set();
+            function visit(element)
+            {
+                if (seen.has(element))
+                {
+                    return;
+                }
+                seen.add(element);
+                if (element.firstChild)
+                {
+                    nodes.push(element.firstChild);
+                }
+                element.children.forEach(visit);
+            }
+            elements.forEach(visit);
+            let index = 0;
+            return {nextNode: () => nodes[index++] || null};
+        },
+        querySelectorAll()
+        {
+            return [...elements.values()].filter((element) => element.hasAttribute('aria-label') || element.hasAttribute('title'));
+        },
         getElementById(id)
         {
             if (!elements.has(id))
             {
                 elements.set(id, createElement());
+                elements.get(id).id = id;
             }
             return elements.get(id);
         },
@@ -432,6 +495,13 @@ async function test()
     elements.get('spi-send-0').click(); // The queue guard also rejects programmatic clicks.
     assert.equal(vm.runInContext('pendingSpi.length', context), 4);
     assert.match(elements.get('spi-message-0').textContent, /Очередь заполнена/);
+    const requestsBeforeQueuedLanguageChange = requests.length;
+    elements.get('lang-en').click();
+    assert.equal(elements.get('spi-send-0').textContent, 'Queue full');
+    assert.equal(vm.runInContext('pendingSpi.length', context), 4);
+    assert.equal(requests.length, requestsBeforeQueuedLanguageChange);
+    elements.get('lang-ru').click();
+    assert.equal(elements.get('spi-send-0').textContent, 'Очередь полна');
     holdSpi = null;
     releaseSpi();
     await transferring;
@@ -445,7 +515,30 @@ async function test()
     assert.deepEqual(jobs.map((r) => r.options.body.split('\n')[1]), ['AA 01', 'AA 02', 'AA 03', 'AA 04', 'AA 05']);
     assert.equal(elements.get('spi-send-0').disabled, false);
     assert.match(elements.get('spi-queue').textContent, /очередь: 0 \/ 4/);
-    console.log('Web UI: strict HEX, yellow errors, immediate serialized dispatch, bounded FIFO/snapshots/exactly once, timing, RTC/Flash/ADC/LED passed');
+    const languageRequests = requests.length;
+    const commandBeforeLanguage = field.value;
+    elements.get('lang-en').click();
+    assert.equal(context.document.documentElement.lang, 'en');
+    assert.equal(context.document.title, 'STM32F411 Monitor');
+    assert.equal(browserStorage.get('stm32f411-language'), 'en');
+    assert.equal(elements.get('spi-send-0').textContent, 'Send');
+    assert.match(elements.get('spi-message-0').textContent, /sent 4 bytes/);
+    assert.equal(field.value, commandBeforeLanguage);
+    assert.equal(requests.length, languageRequests);
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('led-state').textContent, 'Off');
+    elements.get('lang-ru').click();
+    assert.equal(elements.get('spi-send-0').textContent, 'Передать');
+    assert.match(elements.get('spi-message-0').textContent, /передано 4 байт/);
+    assert.equal(context.document.title, 'Монитор STM32F411');
+    context.localStorage = {setItem()
+    {
+        throw new Error('Storage blocked');
+    }};
+    elements.get('lang-en').click();
+    assert.equal(elements.get('spi-send-0').textContent, 'Send');
+    elements.get('lang-ru').click();
+    console.log('Web UI: RU/EN/persistence/blocked storage, preserved queue and commands, strict HEX, dispatch/timing, RTC/Flash/ADC/LED passed');
 }
 
 test().catch((error) =>

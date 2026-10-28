@@ -22,7 +22,7 @@ static char input[APP_REQUEST_CAPACITY];
 static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
-static char output[65536];
+static char output[131072];
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
