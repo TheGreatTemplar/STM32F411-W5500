@@ -237,10 +237,11 @@ static bool spi_response(http_client_t *client)
     rx_hex[command.size * 2U] = '\0';
     count = snprintf(client->body, sizeof(client->body),
                      "{\"bus\":2,\"mode\":%lu,\"hz\":%lu,\"lsb\":%lu,\"cs_high\":%lu,"
-                     "\"count\":%lu,\"tx\":\"%s\",\"rx\":\"%s\"}",
+                     "\"count\":%lu,\"tx\":\"%s\",\"rx\":\"%s\",\"transfer_us\":%lu}",
                      (unsigned long)command.mode, (unsigned long)command.hz,
                      (unsigned long)command.lsb_first, (unsigned long)command.cs_high,
-                     (unsigned long)command.size, tx_hex, rx_hex);
+                     (unsigned long)command.size, tx_hex, rx_hex,
+                     (unsigned long)board_spi_console_duration_us());
     return (count > 0) && ((size_t)count < sizeof(client->body)) &&
            response(client, 200U, "OK", "application/json", client->body, (size_t)count, "");
 }

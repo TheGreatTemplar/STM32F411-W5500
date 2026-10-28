@@ -32,6 +32,12 @@ static bool fail_diagnostics;
 static uint32_t save_calls;
 static uint32_t rtc_writes;
 
+uint32_t board_spi_console_duration_us(void);
+uint32_t board_spi_console_duration_us(void)
+{
+    return 42U;
+}
+
 bool rtc_parse(const char *text, size_t size, rtc_date_t *date)
 {
     memset(date, 0, sizeof(*date));
@@ -440,6 +446,7 @@ int test_entry(void)
         pump(&adc);
         CHECK(spi_calls == 1U);
         CHECK(strstr(output, "\"tx\":\"9F00AAFF\",\"rx\":\"60FF5500\"") != NULL);
+        CHECK(strstr(output, "\"transfer_us\":42") != NULL);
         CHECK(framing_ok());
         for (i = 0U; i < 20U; ++i)
         {

@@ -3,6 +3,12 @@
 
 uint32_t SystemCoreClock = 16000000U;
 static volatile uint32_t tick_ms;
+static uint32_t spi_console_duration_us;
+
+uint32_t board_spi_console_duration_us(void)
+{
+    return spi_console_duration_us;
+}
 
 void SystemInit(void)
 {
@@ -304,8 +310,10 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     const uint32_t saved_adc = ADC->CCR;
     uint32_t cr1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;
     uint32_t start;
+    uint32_t cycles;
     size_t i;
     bool ok = true;
+    spi_console_duration_us = 0U;
     if ((command->mode > 3U) || (command->lsb_first > 1U) || (command->cs_high > 1U) ||
         (command->size == 0U) || (command->size > SPI_CONSOLE_MAX_BYTES))
     {
@@ -316,6 +324,8 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
         return false;
     }
     SPI2->CR1 = 0U;
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
     if ((plan.system_hz != 16000000U) && !boost_clock(&plan))
     {
@@ -340,6 +350,7 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         __NOP();
     }
+    cycles = DWT->CYCCNT;
     GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 12U : 28U);
     start = board_millis();
     for (i = 0U; ok && (i < command->size); ++i)
@@ -372,6 +383,8 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
         ok = (uint32_t)(board_millis() - start) < 100U;
     }
     GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
+    spi_console_duration_us =
+        (DWT->CYCCNT - cycles + plan.system_hz / 1000000U - 1U) / (plan.system_hz / 1000000U);
     SPI2->CR1 &= ~SPI_CR1_SPE;
     if (!ok)
     {

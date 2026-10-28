@@ -117,6 +117,8 @@ def parse_spi(body):
 from unicorn import UC_HOOK_CODE
 
 def model_clock(machine, address, size, data):
+    cycles = int.from_bytes(machine.mem_read(0xE0001004, 4), 'little')
+    machine.mem_write(0xE0001004, ((cycles + 16) & 0xFFFFFFFF).to_bytes(4, 'little'))
     cr = int.from_bytes(machine.mem_read(0x40023800, 4), 'little')
     ready = (cr | (1 << 25)) if cr & (1 << 24) else (cr & ~(1 << 25))
     machine.mem_write(0x40023800, ready.to_bytes(4, 'little'))
@@ -140,6 +142,7 @@ for mode in range(4):
             uc.mem_map(0x40007000, 0x1000)
             uc.mem_map(0x40012000, 0x1000)
             uc.mem_map(0xE000E000, 0x1000)
+            uc.mem_map(0xE0001000, 0x1000)
             uc.hook_add(UC_HOOK_CODE, model_clock)
         uc.reg_write(UC_ARM_REG_R0, hz)
         uc.reg_write(UC_ARM_REG_R1, 0x20018800)
@@ -154,6 +157,7 @@ for mode in range(4):
         uc.reg_write(UC_ARM_REG_R1, 0x20018400)
         assert call(uc, symbols['board_spi_console']) == 1
         assert bytes(uc.mem_read(0x20018400, 4)) == command[20:24]
+        assert call(uc, symbols['board_spi_console_duration_us']) > 0
         cr1 = int.from_bytes(uc.mem_read(0x40003800, 4), 'little')
         assert cr1 & 3 == mode and cr1 & 128 and not cr1 & 64
         assert pclk1_hz // (2 << ((cr1 >> 3) & 7)) == hz

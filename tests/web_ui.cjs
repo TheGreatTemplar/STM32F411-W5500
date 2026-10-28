@@ -7,6 +7,10 @@ const html = fs.readFileSync(path.join(__dirname, '../src/web/index.html'), 'utf
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\n\s*update\(\);\s*$/, '');
 const elements = new Map();
 const requests = [];
+const timers = new Map();
+let timerId = 0;
+let holdAdc = null;
+let holdSpi = null;
 let ledOn = false;
 let failCommand = false;
 let adcOk = true;
@@ -92,9 +96,15 @@ const context = vm.createContext({
     },
     location: {host: '172.16.236.220:5025'},
     AbortController,
-    setTimeout: () => 1,
-    clearTimeout()
+    performance,
+    setTimeout(callback, delay)
     {
+        timers.set(++timerId, {callback, delay});
+        return timerId;
+    },
+    clearTimeout(id)
+    {
+        timers.delete(id);
     },
     async fetch(url, options)
     {
@@ -124,13 +134,17 @@ const context = vm.createContext({
         {
             assert.equal(options.method, 'POST');
             assert.equal(options.headers['X-Device-Control'], '1');
+            if (holdSpi)
+            {
+                await holdSpi;
+            }
             if (failSpiTransport)
             {
                 throw new Error('Network failure');
             }
             return {ok: !failSpi, text: async () => 'Invalid SPI command',
                 json: async () => ({bus: 2, mode: 3, hz: 1000000, count: 4,
-                    tx: '9F000000', rx: 'EF401500'})};
+                    tx: '9F000000', rx: 'EF401500', transfer_us: 42})};
         }
         if (url === '/api/diagnostics')
         {
@@ -156,6 +170,10 @@ const context = vm.createContext({
             return {ok: true, json: async () => ({led_on: ledOn})};
         }
         assert.equal(url, '/api/adc');
+        if (holdAdc)
+        {
+            await holdAdc;
+        }
         return {ok: true, json: async () => ({raw: [0, 4095], mv: [0, 3300],
             adc_ok: adcOk, link: true, link_speed_mbps: 100, led_on: ledOn,
             sample_count: 1, uptime_ms: 1000, vref_mv: 3300, rtc: rtcState})};
@@ -238,7 +256,7 @@ async function test()
     elements.get('spi-lsb').checked = false;
     elements.get('spi-cs-high').checked = false;
     elements.get('spi-send-0').click();
-    assert.equal(elements.get('spi-send-0').disabled, true);
+    assert.equal(elements.get('spi-send-0').disabled, false);
     const beforeSpi = requests.length;
     await vm.runInContext('update()', context);
     assert.equal(requests.length, beforeSpi + 1);
@@ -248,9 +266,11 @@ async function test()
     assert.equal(elements.get('spi-tx-0').value, '9F 00 00 00');
     assert.equal(elements.get('spi-rx-0').value, 'EF 40 15 00');
     assert.equal(elements.get('spi-send-0').disabled, false);
+    assert.match(elements.get('spi-message-0').textContent, /CS: 42 мкс.*отклик:/);
     elements.get('spi-command-0').value = '9';
     elements.get('spi-send-0').click();
     assert.match(elements.get('spi-message-0').textContent, /HEX/);
+    assert.match(elements.get('spi-message-0').className, /input-error/);
     elements.get('spi-command-0').value = '00 '.repeat(257);
     elements.get('spi-send-0').click();
     assert.match(elements.get('spi-message-0').textContent, /256/);
@@ -308,9 +328,28 @@ async function test()
     assert.equal(field.selectionStart, 2); // Backspace can cross a byte separator.
     assert.equal(enter('9f\t00\nAa'), '9F 00 AA');
     assert.equal(enter('9f0'), '9F 0'); // Keep an unfinished nibble; never pad with zero.
-    assert.equal(enter('9F GG'), '9F GG'); // Invalid data must remain visible for validation.
+    assert.equal(enter('9F GG'), '9F 0'); // Reject the whole mutation, never strip characters into a different command.
+    assert.match(elements.get('spi-message-0').className, /input-error/);
+    let prevented = false;
+    field.beforeinput({data: 'G', preventDefault()
+    {
+        prevented = true;
+    }});
+    assert.equal(prevented, true);
+    assert.equal(field.value, '9F 0');
+    for (const text of ['0x9F', '9F GG', 'команда', '00 '.repeat(257)])
+    {
+        prevented = false;
+        field.paste({clipboardData: {getData: () => text}, preventDefault()
+        {
+            prevented = true;
+        }});
+        assert.equal(prevented, true);
+        assert.equal(field.value, '9F 0');
+    }
     assert.equal(enter(''), '');
     assert.equal(enter('aa '), 'AA ');
+    assert.equal(elements.get('spi-message-0').className, 'command-message');
     assert.equal(enter('ff'.repeat(256)).length, 767);
     elements.get('spi-format').value = 'ascii';
     assert.equal(enter('aabb\n'), 'aabb\n');
@@ -346,7 +385,67 @@ async function test()
     assert.equal(elements.get('rtc-set').disabled, true);
     assert.equal(elements.get('rtc-sync').disabled, true);
     assert.match(elements.get('rtc-message').textContent, /LSE не запустился/);
-    console.log('Web UI: RTC manual/local-PC set, invalid date, no automatic sync/retry, LSE error, SPI/Flash/ADC/LED/diagnostics passed');
+    elements.get('spi-format').value = 'hex';
+    enter('AA BB');
+    failSpiTransport = false;
+    const beforeWake = requests.filter((r) => r.url === '/api/spi').length;
+    elements.get('spi-send-0').click();
+    assert.equal([...timers.values()].at(-1).delay, 0);
+    assert.equal(elements.get('spi-send-0').textContent, 'В очередь');
+    await [...timers.values()].at(-1).callback();
+    assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeWake + 1);
+    assert.equal(elements.get('spi-send-0').disabled, false);
+
+    let releaseAdc;
+    holdAdc = new Promise((resolve) =>
+    {
+        releaseAdc = resolve;
+    });
+    const polling = vm.runInContext('update()', context);
+    const beforeBusyWake = requests.length;
+    elements.get('spi-send-0').click();
+    await vm.runInContext('update()', context); // No parallel fetch while ADC is outstanding.
+    assert.equal(requests.length, beforeBusyWake);
+    holdAdc = null;
+    releaseAdc();
+    await polling;
+    assert.equal([...timers.values()].at(-1).delay, 0);
+    await [...timers.values()].at(-1).callback();
+    assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeWake + 2);
+    let releaseSpi;
+    holdSpi = new Promise((resolve) =>
+    {
+        releaseSpi = resolve;
+    });
+    enter('AA 01');
+    const beforeQueue = requests.filter((r) => r.url === '/api/spi').length;
+    elements.get('spi-send-0').click();
+    const transferring = vm.runInContext('update()', context);
+    assert.equal(elements.get('spi-send-0').disabled, false);
+    for (const byte of ['02', '03', '04', '05'])
+    {
+        enter('AA ' + byte);
+        elements.get('spi-send-0').click();
+    }
+    assert.equal(elements.get('spi-send-0').disabled, true);
+    assert.match(elements.get('spi-queue').textContent, /очередь: 4 \/ 4/);
+    elements.get('spi-send-0').click(); // The queue guard also rejects programmatic clicks.
+    assert.equal(vm.runInContext('pendingSpi.length', context), 4);
+    assert.match(elements.get('spi-message-0').textContent, /Очередь заполнена/);
+    holdSpi = null;
+    releaseSpi();
+    await transferring;
+    for (let i = 0; i < 4; ++i)
+    {
+        assert.equal([...timers.values()].at(-1).delay, 0);
+        await [...timers.values()].at(-1).callback();
+    }
+    const jobs = requests.filter((r) => r.url === '/api/spi').slice(beforeQueue);
+    assert.equal(jobs.length, 5);
+    assert.deepEqual(jobs.map((r) => r.options.body.split('\n')[1]), ['AA 01', 'AA 02', 'AA 03', 'AA 04', 'AA 05']);
+    assert.equal(elements.get('spi-send-0').disabled, false);
+    assert.match(elements.get('spi-queue').textContent, /очередь: 0 \/ 4/);
+    console.log('Web UI: strict HEX, yellow errors, immediate serialized dispatch, bounded FIFO/snapshots/exactly once, timing, RTC/Flash/ADC/LED passed');
 }
 
 test().catch((error) =>

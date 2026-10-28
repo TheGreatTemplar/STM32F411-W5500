@@ -58,6 +58,7 @@
         .result-title { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: 13px; }
         .result-title .hint { margin: 0; }
         .command-card .spi-output { margin: 6px 0; font-size: 13px; }
+        .input-error { background: #ffe082; color: #332600 !important; padding: 6px 10px; border-radius: 6px; }
         .command-message { min-height: 20px; font-size: 13px; margin: 8px 0; }
         .store-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
         #store-status { font-size: 13px; color: #a6b7c7; }
@@ -153,6 +154,7 @@
                 <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label></div>
             </div>
             <p class="hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
+            <p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p>
             <div class="store-bar"><button type="button" id="store-save" disabled>Сохранить 4 команды во Flash</button><span id="store-status" role="status">Проверка W25Q64JV…</span></div>
             <div class="command-card">
                 <label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label>
@@ -211,8 +213,91 @@
         let pendingLed = null;
         let ledBusy = false;
         let pendingDiagnostics = false;
-        let pendingSpi = null;
+        const pendingSpi = [];
+        let activeSpi = null;
         let spiBusy = false;
+        let spiSequence = 0;
+        let updateRunning = false;
+        let updateTimer = null;
+        const hexAllowed = /^[0-9a-fA-F \t\r\n]*$/;
+        const commandEdits = Array.from({length: 4}, (_, i) => ({text: get('spi-command-' + i).value || '', start: 0, end: 0}));
+        function scheduleUpdate(delay)
+        {
+            if (updateTimer !== null)
+            {
+                clearTimeout(updateTimer);
+            }
+            updateTimer = setTimeout(() =>
+            {
+                updateTimer = null;
+                return update();
+            }, delay);
+        }
+        function wakeUpdate()
+        {
+            if (!updateRunning)
+            {
+                scheduleUpdate(0);
+            }
+        }
+        function spiMessage(index, text, error = false)
+        {
+            get('spi-message-' + index).textContent = text;
+            get('spi-message-' + index).className = 'command-message' + (error ? ' input-error' : '');
+        }
+        function spiButtons()
+        {
+            for (let i = 0; i < 4; ++i)
+            {
+                get('spi-send-' + i).disabled = pendingSpi.length >= 4;
+                get('spi-send-' + i).textContent = pendingSpi.length >= 4 ? 'Очередь полна' :
+                    (spiBusy || pendingSpi.length ? 'В очередь' : 'Передать');
+            }
+            get('spi-queue').textContent = (activeSpi ? 'Передача №' + activeSpi.sequence : 'SPI свободна') +
+                ' · очередь: ' + pendingSpi.length + ' / 4';
+        }
+        function rememberCommand(index)
+        {
+            const field = get('spi-command-' + index);
+            commandEdits[index] = {text: field.value || '', start: field.selectionStart, end: field.selectionEnd};
+        }
+        function rejectHex(index, event)
+        {
+            event.preventDefault();
+            spiMessage(index, 'HEX: разрешены только 0–9, A–F и пробельные разделители. Ввод отклонён целиком.', true);
+        }
+        function commandInput(index, event)
+        {
+            const field = get('spi-command-' + index);
+            if (get('spi-format').value === 'hex')
+            {
+                const previous = commandEdits[index];
+                const deleting = event && event.inputType && event.inputType.startsWith('delete');
+                if (field.value.replace(/\s/g, '').length > 512 && !deleting)
+                {
+                    field.value = previous.text;
+                    field.setSelectionRange(previous.start, previous.end);
+                    spiMessage(index, 'Максимум 256 байт. Ввод отклонён целиком.', true);
+                    return;
+                }
+                if (!hexAllowed.test(field.value) && !(event && event.inputType && event.inputType.startsWith('delete') && !hexAllowed.test(previous.text)))
+                {
+                    field.value = previous.text;
+                    field.setSelectionRange(previous.start, previous.end);
+                    spiMessage(index, 'HEX: разрешены только 0–9, A–F и пробельные разделители. Ввод отклонён целиком.', true);
+                    return;
+                }
+                formatHexInput(field);
+                const error = validateText(field.value, true);
+                spiMessage(index, error, !!error);
+            }
+            else
+            {
+                spiMessage(index, '');
+            }
+            rememberCommand(index);
+            markDirty();
+        }
         let pendingSave = null;
         let pendingStoreLoad = true;
         let storeWaiting = false;
@@ -283,6 +368,7 @@
             rtcBusy = true;
             rtcButtons();
             get('rtc-message').textContent = 'Установка RTC…';
+            wakeUpdate();
         }
         get('rtc-set').addEventListener('click', () => queueRtc(false));
         get('rtc-sync').addEventListener('click', () => queueRtc(true));
@@ -313,7 +399,7 @@
         }
         function formatHexInput(field)
         {
-            if (get('spi-format').value !== 'hex' || !/^[0-9a-fA-F\s]*$/.test(field.value))
+            if (get('spi-format').value !== 'hex' || !hexAllowed.test(field.value))
             {
                 return;
             }
@@ -378,25 +464,24 @@
         }
         function queueSpi(index)
         {
-            if (spiBusy)
+            if (pendingSpi.length >= 4)
             {
+                spiMessage(index, 'Очередь заполнена: дождись выполнения принятых команд.', true);
                 return;
             }
             const text = get('spi-command-' + index).value;
             const error = validateText(text, false);
             if (error)
             {
-                get('spi-message-' + index).textContent = error;
+                spiMessage(index, error, true);
                 return;
             }
-            pendingSpi = {index, body: settingsLine() + '\n' + text};
-            spiBusy = true;
-            for (let i = 0; i < 4; ++i)
-            {
-                get('spi-send-' + i).disabled = true;
-            }
+            const request = {index, body: settingsLine() + '\n' + text, sequence: ++spiSequence, queuedAt: performance.now()};
+            pendingSpi.push(request);
             get('spi-rx-' + index).value = '—';
-            get('spi-message-' + index).textContent = 'Отправка SPI-команды…';
+            spiMessage(index, '№' + request.sequence + ' · команда принята в очередь');
+            spiButtons();
+            wakeUpdate();
         }
         function queueSave()
         {
@@ -410,6 +495,8 @@
                 const error = validateText(texts[i], true);
                 if (error || texts[i].length > 768)
                 {
+                    spiMessage(i, error || 'Максимум 768 символов для сохранения.', true);
+                    get('store-status').className = 'input-error';
                     get('store-status').textContent = 'Команда ' + (i + 1) + ': ' + (error || 'Максимум 768 символов для сохранения.');
                     return;
                 }
@@ -418,7 +505,9 @@
             saveFingerprint = draftSnapshot();
             saveBusy = true;
             get('store-save').disabled = true;
+            get('store-status').className = '';
             get('store-status').textContent = 'Сохранение во внешнюю Flash…';
+            wakeUpdate();
         }
         function showStore(data, initial)
         {
@@ -439,6 +528,7 @@
                     get('spi-mode-' + i).checked = settings.mode === i;
                     get('spi-command-' + i).value = data.commands[i];
                     formatHexInput(get('spi-command-' + i));
+                    rememberCommand(i);
                 }
                 markDirty();
                 draftDirty = false;
@@ -464,11 +554,44 @@
         for (let i = 0; i < 4; ++i)
         {
             get('spi-send-' + i).addEventListener('click', () => queueSpi(i));
-            get('spi-command-' + i).addEventListener('input', () =>
+            const field = get('spi-command-' + i);
+            field.addEventListener('beforeinput', (event) =>
             {
-                formatHexInput(get('spi-command-' + i));
-                markDirty();
+                rememberCommand(i);
+                if (get('spi-format').value === 'hex' && event.data && !hexAllowed.test(event.data))
+                {
+                    rejectHex(i, event);
+                }
+                else if (get('spi-format').value === 'hex' && event.data)
+                {
+                    const next = field.value.slice(0, field.selectionStart) + event.data + field.value.slice(field.selectionEnd);
+                    if (next.replace(/\s/g, '').length > 512)
+                    {
+                        event.preventDefault();
+                        spiMessage(i, 'Максимум 256 байт. Ввод отклонён целиком.', true);
+                    }
+                }
             });
+            field.addEventListener('paste', (event) =>
+            {
+                if (get('spi-format').value !== 'hex')
+                {
+                    return;
+                }
+                const text = event.clipboardData.getData('text');
+                if (!hexAllowed.test(text))
+                {
+                    rejectHex(i, event);
+                    return;
+                }
+                const next = field.value.slice(0, field.selectionStart) + text + field.value.slice(field.selectionEnd);
+                if (next.replace(/\s/g, '').length > 512)
+                {
+                    event.preventDefault();
+                    spiMessage(i, 'Максимум 256 байт. Вставка отклонена целиком.', true);
+                }
+            });
+            field.addEventListener('input', (event) => commandInput(i, event));
             get('spi-mode-' + i).addEventListener('change', markDirty);
         }
         for (const id of ['spi-hz', 'spi-format', 'spi-msb', 'spi-lsb', 'spi-cs-low', 'spi-cs-high'])
@@ -478,6 +601,9 @@
                 for (let i = 0; i < 4; ++i)
                 {
                     formatHexInput(get('spi-command-' + i));
+                    rememberCommand(i);
+                    const error = validateText(get('spi-command-' + i).value || '', true);
+                    spiMessage(i, error, !!error);
                 }
                 markDirty();
             });
@@ -543,6 +669,7 @@
             pendingDiagnostics = true;
             get('diag-refresh').disabled = true;
             get('diag-message').textContent = 'Чтение диагностики…';
+            wakeUpdate();
         }
         get('diag-open').addEventListener('click', () =>
         {
@@ -571,6 +698,7 @@
             ledBusy = true;
             enableLedButtons(false);
             get('led-message').textContent = 'Отправка команды…';
+            wakeUpdate();
         }
         get('led-on').addEventListener('click', () => queueLed(true));
         get('led-off').addEventListener('click', () => queueLed(false));
@@ -586,6 +714,16 @@
         }
         async function update()
         {
+            if (updateRunning)
+            {
+                return;
+            }
+            if (updateTimer !== null)
+            {
+                clearTimeout(updateTimer);
+                updateTimer = null;
+            }
+            updateRunning = true;
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 1500);
             const clock = pendingRtc;
@@ -595,10 +733,13 @@
             {
                 pendingLed = null;
             }
-            const spi = clock === null && command === null ? pendingSpi : null;
+            const spi = clock === null && command === null ? (pendingSpi.shift() || null) : null;
             if (spi !== null)
             {
-                pendingSpi = null;
+                activeSpi = spi;
+                spiBusy = true;
+                spiMessage(spi.index, '№' + spi.sequence + ' · передача, ожидается подтверждение…');
+                spiButtons();
             }
             const diagnostics = clock === null && command === null && spi === null && pendingDiagnostics;
             const save = clock === null && command === null && spi === null && !diagnostics ? pendingSave : null;
@@ -664,7 +805,7 @@
                     const result = await reply.json();
                     get('spi-tx-' + spi.index).value = result.tx.match(/../g).join(' ');
                     get('spi-rx-' + spi.index).value = result.rx.match(/../g).join(' ');
-                    get('spi-message-' + spi.index).textContent = 'Передано ' + result.count + ' байт · режим ' + result.mode + ' · ' + result.hz + ' Гц';
+                    spiMessage(spi.index, '№' + spi.sequence + ' · передано ' + result.count + ' байт · CS: ' + result.transfer_us + ' мкс · отклик: ' + Math.round(performance.now() - spi.queuedAt) + ' мс · режим ' + result.mode + ' · ' + result.hz + ' Гц');
                     return;
                 }
                 if (diagnostics)
@@ -741,8 +882,8 @@
                 }
                 if (spi !== null)
                 {
-                    get('spi-message-' + spi.index).textContent = error.message.startsWith('SPI:') ? error.message :
-                        'Нет подтверждения: команда могла выполниться. Автоповтора нет; проверь устройство перед повторной передачей.';
+                    spiMessage(spi.index, '№' + spi.sequence + ' · ' + (error.message.startsWith('SPI:') ? error.message :
+                        'Нет подтверждения: команда могла выполниться. Автоповтора нет; проверь устройство перед повторной передачей.'), true);
                     return;
                 }
                 if (diagnostics)
@@ -781,10 +922,8 @@
                 if (spi !== null)
                 {
                     spiBusy = false;
-                    for (let i = 0; i < 4; ++i)
-                    {
-                        get('spi-send-' + i).disabled = false;
-                    }
+                    activeSpi = null;
+                    spiButtons();
                 }
                 if (diagnostics)
                 {
@@ -798,7 +937,9 @@
                 {
                     enableLedButtons(true);
                 }
-                setTimeout(update, 250);
+                updateRunning = false;
+                const pending = pendingSpi.length > 0 || pendingRtc !== null || pendingLed !== null || pendingDiagnostics || pendingSave !== null;
+                scheduleUpdate(pending ? 0 : 250);
             }
         }
         update();
