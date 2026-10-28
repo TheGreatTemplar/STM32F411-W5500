@@ -14,58 +14,63 @@
         h2 { margin: 0; font-size: 17px; font-weight: 500; }
         p { color: #a6b7c7; line-height: 1.6; }
         .eyebrow { color: #70c4c1; font-size: 12px; letter-spacing: 2px; }
-        #status { border: 1px solid #476273; border-radius: 20px; padding: 8px 14px; color: #b7c6d3; }
+        #status { border: 1px solid #476273; border-radius: 20px; padding: 6.8px 11.9px; color: #b7c6d3; }
         #status.good { color: #7fe3ba; border-color: #37735d; }
         #status.bad { color: #ffb1a3; border-color: #9c544b; }
         .channels { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 20px; }
-        article, .details { background: #182634; border: 1px solid #2b4052; border-radius: 16px; padding: 24px; }
+        article, .details { background: #182634; border: 1px solid #2b4052; border-radius: 16px; padding: 20.4px; }
         article:nth-child(2) { --accent: #d6b5ff; }
         article { --accent: #6ed8c4; }
-        .pin { color: var(--accent); font-size: 14px; margin: 8px 0 24px; }
-        .voltage { font-variant-numeric: tabular-nums; font-size: 54px; letter-spacing: -2px; }
-        .unit { font-size: 22px; color: #a6b7c7; }
-        progress { width: 100%; height: 9px; accent-color: var(--accent); margin: 18px 0 8px; }
+        .pin { color: var(--accent); font-size: 14px; margin: 4px 0 0; }
+        .voltage { font-variant-numeric: tabular-nums; font-size: clamp(30px,4vw,42px); letter-spacing: -2px; }
+        .unit { font-size: 20px; color: #a6b7c7; }
+        progress { width: 100%; height: 9px; accent-color: var(--accent); margin: 10px 0 6px; }
         .raw { color: #b6c6d3; font-variant-numeric: tabular-nums; }
         .details { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 16px 36px; color: #a6b7c7; font-size: 14px; }
         .details strong { display: block; color: #e9eff5; margin-top: 5px; font-weight: 500; }
-        .led-control { margin-top: 20px; padding: 24px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
+        .led-control { margin-top: 20px; padding: 20.4px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
         .led-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
         #led-state { color: #a6b7c7; }
         #led-state.on { color: #89b6ff; }
-        .buttons { display: flex; gap: 12px; margin-top: 20px; }
-        button { padding: 12px 30px; border: 1px solid #476273; border-radius: 10px; background: #24394d; color: #e9eff5; font: inherit; font-weight: 600; cursor: pointer; }
+        .buttons { display: flex; gap: 10px; }
+        button { padding: 10.2px 25.5px; border: 1px solid #476273; border-radius: 10px; background: #24394d; color: #e9eff5; font: inherit; font-weight: 600; cursor: pointer; }
         #led-on { background: #2763ab; border-color: #478ddd; }
         button:hover { filter: brightness(1.15); }
         button:disabled { opacity: 0.45; cursor: wait; }
         #led-message { font-size: 13px; min-height: 21px; margin: 12px 0 0; }
-        .spi-control { margin-top: 20px; padding: 24px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
+        .spi-control { margin-top: 20px; padding: 20.4px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
         .spi-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         .spi-title .hint { margin: 0; }
-        .vertical-options { display: flex; flex-direction: column; gap: 8px; }
-        .command-card { padding: 18px 0; border-top: 1px solid #2b4052; }
+        .vertical-options { display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+        .command-card { padding: 15.3px 0; border-top: 1px solid #2b4052; }
         .command-editor { display: grid; grid-template-columns: minmax(0,1fr) 120px; gap: 16px; align-items: start; margin-top: 8px; }
-        .command-editor textarea { min-height: 70px; }
-        .command-editor button { padding: 12px 14px; }
+        .command-editor button { padding: 8.5px 11.9px; }
         .result-title { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: 13px; }
         .result-title .hint { margin: 0; }
-        .command-card pre { margin: 6px 0; min-height: 38px; max-height: 100px; overflow-y: auto; }
+        .command-card .spi-output { margin: 6px 0; font-size: 13px; }
         .command-message { min-height: 20px; font-size: 13px; margin: 8px 0; }
         .store-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
         #store-status { font-size: 13px; color: #a6b7c7; }
         @media (max-width: 520px) { .command-editor { grid-template-columns: minmax(0,1fr); } .command-editor button { justify-self: start; } }
-        .spi-settings { display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0; align-items: center; }
-        fieldset { border: 1px solid #476273; border-radius: 10px; padding: 12px; }
+        .spi-settings { display: flex; flex-wrap: wrap; gap: 16px; margin: 15px 0; align-items: stretch; }
+        .spi-settings fieldset { margin: 0; height: 84px; padding: 8px 10.2px; }
+        .spi-selects { display: grid; gap: 6px; align-content: center; }
+        .spi-selects label { display: grid; grid-template-columns: 70px minmax(130px,1fr); }
+        .spi-selects select { padding: 4px 8.5px; }
+        .channel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .channel-value { white-space: nowrap; }
+        .command-message:empty, #led-message:empty { display: none; }
+        fieldset { border: 1px solid #476273; border-radius: 10px; padding: 10.2px; }
         legend, .hint { color: #a6b7c7; font-size: 13px; }
         label { display: inline-flex; align-items: center; gap: 6px; }
-        select, textarea { color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 10px; font: inherit; }
-        textarea { display: block; width: 100%; min-height: 100px; font-family: ui-monospace,monospace; resize: vertical; }
-        pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; padding: 12px; background: #101923; border-radius: 8px; }
-        #spi-message { min-height: 24px; }
+        select, textarea { color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 8.5px; font: inherit; }
+        textarea { display: block; width: 100%; min-height: calc(1.5em + 19px); height: calc(1.5em + 19px); line-height: 1.5; font-family: ui-monospace,monospace; resize: vertical; }
+        pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; padding: 10.2px; background: #101923; border-radius: 8px; }
         .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-        dialog { width: min(1100px,calc(100% - 24px)); max-height: 90vh; padding: 24px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 18px; }
+        dialog { width: min(1100px,calc(100% - 24px)); max-height: 90vh; padding: 20.4px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 18px; }
         dialog::backdrop { background: #050b13bb; }
         .diag-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; margin: 20px 0; }
-        .diag-grid div { padding: 14px; background: #182634; border-radius: 10px; color: #a6b7c7; font-size: 13px; }
+        .diag-grid div { padding: 11.9px; background: #182634; border-radius: 10px; color: #a6b7c7; font-size: 13px; }
         .diag-grid strong { display: block; color: #e9eff5; margin-top: 6px; font-size: 15px; overflow-wrap: anywhere; }
         .table-scroll { overflow-x: auto; }
         table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
@@ -83,14 +88,14 @@
         </header>
         <section class="channels" aria-label="Каналы АЦП">
             <article>
-                <h2>Канал 1</h2><div class="pin">PA0 / ADC1_IN0</div>
-                <span class="voltage" id="v0">—</span><span class="unit"> В</span>
+                <div class="channel-header"><h2>Канал 1</h2><div class="channel-value"><span class="voltage" id="v0">—</span><span class="unit"> В</span></div></div>
+                <div class="pin">PA0 / ADC1_IN0</div>
                 <progress id="p0" max="4095" value="0" aria-label="Уровень PA0"></progress>
                 <div class="raw">Код АЦП: <span id="r0">—</span> / 4095</div>
             </article>
             <article>
-                <h2>Канал 2</h2><div class="pin">PA1 / ADC1_IN1</div>
-                <span class="voltage" id="v1">—</span><span class="unit"> В</span>
+                <div class="channel-header"><h2>Канал 2</h2><div class="channel-value"><span class="voltage" id="v1">—</span><span class="unit"> В</span></div></div>
+                <div class="pin">PA1 / ADC1_IN1</div>
                 <progress id="p1" max="4095" value="0" aria-label="Уровень PA1"></progress>
                 <div class="raw">Код АЦП: <span id="r1">—</span> / 4095</div>
             </article>
@@ -102,8 +107,7 @@
             <div>Опорное напряжение<strong id="vref">—</strong></div>
         </section>
         <section class="led-control" aria-label="Управление светодиодом">
-            <div class="led-header"><h2>Синий светодиод · PC13</h2><span id="led-state" role="status">Состояние: —</span></div>
-            <div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div>
+            <div class="led-header"><h2>Синий светодиод · PC13</h2><div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div><span id="led-state" role="status">Состояние: —</span></div>
             <p id="led-message" role="status"></p>
         </section>
         <section class="spi-control" aria-label="SPI-консоль">
@@ -124,38 +128,38 @@
                     <label><input type="radio" name="spi-cs" id="spi-cs-low" checked>LOW</label>
                     <label><input type="radio" name="spi-cs" id="spi-cs-high">HIGH</label>
                 </fieldset>
-                <label>Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option></select></label>
-                <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label>
+                <div class="spi-selects"><label>Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option></select></label>
+                <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label></div>
             </div>
             <p class="hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
             <div class="store-bar"><button type="button" id="store-save" disabled>Сохранить 4 команды во Flash</button><span id="store-status" role="status">Проверка W25Q64JV…</span></div>
             <div class="command-card">
                 <label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label>
-                <div class="command-editor"><textarea id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
                 <p id="spi-message-0" class="command-message" role="status"></p>
-                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-0">—</pre>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-0">—</pre>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-0" readonly aria-label="TX команды 1">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-0" readonly aria-label="RX команды 1">—</textarea>
             </div>
             <div class="command-card">
                 <label for="spi-command-1">Команда 2 · передаваемые данные · до 256 байт</label>
-                <div class="command-editor"><textarea id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1">Передать</button></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1">Передать</button></div>
                 <p id="spi-message-1" class="command-message" role="status"></p>
-                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-1">—</pre>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-1">—</pre>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-1" readonly aria-label="TX команды 2">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-1" readonly aria-label="RX команды 2">—</textarea>
             </div>
             <div class="command-card">
                 <label for="spi-command-2">Команда 3 · передаваемые данные · до 256 байт</label>
-                <div class="command-editor"><textarea id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2">Передать</button></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2">Передать</button></div>
                 <p id="spi-message-2" class="command-message" role="status"></p>
-                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-2">—</pre>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-2">—</pre>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-2" readonly aria-label="TX команды 3">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-2" readonly aria-label="RX команды 3">—</textarea>
             </div>
             <div class="command-card">
                 <label for="spi-command-3">Команда 4 · передаваемые данные · до 256 байт</label>
-                <div class="command-editor"><textarea id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3">Передать</button></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3">Передать</button></div>
                 <p id="spi-message-3" class="command-message" role="status"></p>
-                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><pre id="spi-tx-3">—</pre>
-                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><pre id="spi-rx-3">—</pre>
+                <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-3" readonly aria-label="TX команды 4">—</textarea>
+                <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
             </div>
         </section>
         <footer>
@@ -208,6 +212,35 @@
                 ' lsb=' + (get('spi-lsb').checked ? 1 : 0) +
                 ' cs_high=' + (get('spi-cs-high').checked ? 1 : 0) +
                 ' format=' + get('spi-format').value;
+        }
+        function formatHexInput(field)
+        {
+            if (get('spi-format').value !== 'hex' || !/^[0-9a-fA-F\s]*$/.test(field.value))
+            {
+                return;
+            }
+            const text = field.value;
+            const digits = text.replace(/\s/g, '').toUpperCase();
+            let formatted = (digits.match(/.{1,2}/g) || []).join(' ');
+            if (digits.length && digits.length % 2 === 0 && /\s$/.test(text))
+            {
+                formatted += ' ';
+            }
+            if (formatted === text)
+            {
+                return;
+            }
+            const caret = (position) =>
+            {
+                const prefix = text.slice(0, position);
+                const count = prefix.replace(/\s/g, '').length;
+                const separator = count && count % 2 === 0 && /\s$/.test(prefix) ? 1 : 0;
+                return Math.min(formatted.length, count + Math.max(0, Math.floor((count - 1) / 2)) + separator);
+            };
+            const start = caret(field.selectionStart);
+            const end = caret(field.selectionEnd);
+            field.value = formatted;
+            field.setSelectionRange(start, end);
         }
         function draftSnapshot()
         {
@@ -264,7 +297,7 @@
             {
                 get('spi-send-' + i).disabled = true;
             }
-            get('spi-rx-' + index).textContent = '—';
+            get('spi-rx-' + index).value = '—';
             get('spi-message-' + index).textContent = 'Отправка SPI-команды…';
         }
         function queueSave()
@@ -307,6 +340,7 @@
                 {
                     get('spi-mode-' + i).checked = settings.mode === i;
                     get('spi-command-' + i).value = data.commands[i];
+                    formatHexInput(get('spi-command-' + i));
                 }
                 markDirty();
                 draftDirty = false;
@@ -332,12 +366,23 @@
         for (let i = 0; i < 4; ++i)
         {
             get('spi-send-' + i).addEventListener('click', () => queueSpi(i));
-            get('spi-command-' + i).addEventListener('input', markDirty);
+            get('spi-command-' + i).addEventListener('input', () =>
+            {
+                formatHexInput(get('spi-command-' + i));
+                markDirty();
+            });
             get('spi-mode-' + i).addEventListener('change', markDirty);
         }
         for (const id of ['spi-hz', 'spi-format', 'spi-msb', 'spi-lsb', 'spi-cs-low', 'spi-cs-high'])
         {
-            get(id).addEventListener('change', markDirty);
+            get(id).addEventListener('change', () =>
+            {
+                for (let i = 0; i < 4; ++i)
+                {
+                    formatHexInput(get('spi-command-' + i));
+                }
+                markDirty();
+            });
         }
         get('store-save').addEventListener('click', queueSave);
         function diagnosticCards(id, items)
@@ -496,8 +541,8 @@
                         throw new Error('SPI: ' + (await reply.text()).trim());
                     }
                     const result = await reply.json();
-                    get('spi-tx-' + spi.index).textContent = result.tx.match(/../g).join(' ');
-                    get('spi-rx-' + spi.index).textContent = result.rx.match(/../g).join(' ');
+                    get('spi-tx-' + spi.index).value = result.tx.match(/../g).join(' ');
+                    get('spi-rx-' + spi.index).value = result.rx.match(/../g).join(' ');
                     get('spi-message-' + spi.index).textContent = 'Передано ' + result.count + ' байт · режим ' + result.mode + ' · ' + result.hz + ' Гц';
                     return;
                 }

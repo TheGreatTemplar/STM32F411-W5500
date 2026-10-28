@@ -20,6 +20,12 @@ const saved = {present: true, ready: true, busy: false, has_saved: true, save_ok
 function createElement()
 {
     return {textContent: '', className: '', disabled: true, open: false, children: [],
+        selectionStart: 0, selectionEnd: 0,
+        setSelectionRange(start, end)
+        {
+            this.selectionStart = start;
+            this.selectionEnd = end;
+        },
         append(...nodes)
         {
             this.children.push(...nodes);
@@ -194,8 +200,8 @@ async function test()
     assert.equal(requests.at(-1).url, '/api/spi');
     assert.equal(requests.at(-1).options.body,
         'bus=2 mode=3 hz=1000000 lsb=0 cs_high=0 format=hex\n9F 00 00 00');
-    assert.equal(elements.get('spi-tx-0').textContent, '9F 00 00 00');
-    assert.equal(elements.get('spi-rx-0').textContent, 'EF 40 15 00');
+    assert.equal(elements.get('spi-tx-0').value, '9F 00 00 00');
+    assert.equal(elements.get('spi-rx-0').value, 'EF 40 15 00');
     assert.equal(elements.get('spi-send-0').disabled, false);
     elements.get('spi-command-0').value = '9';
     elements.get('spi-send-0').click();
@@ -226,7 +232,7 @@ async function test()
     elements.get('spi-command-1').value = 'AA BB';
     elements.get('spi-send-1').click();
     await vm.runInContext('update()', context);
-    assert.equal(elements.get('spi-rx-1').textContent, 'EF 40 15 00');
+    assert.equal(elements.get('spi-rx-1').value, 'EF 40 15 00');
     assert.equal(elements.get('spi-command-0').value, '9F 00');
     const spiCount = requests.filter((r) => r.url === '/api/spi').length;
     elements.get('store-save').click();
@@ -243,6 +249,26 @@ async function test()
     elements.get('spi-command-0').input();
     vm.runInContext('showStore(' + JSON.stringify(saved) + ', true)', context);
     assert.equal(elements.get('spi-command-0').value, '55');
+    const field = elements.get('spi-command-0');
+    function enter(text, position = text.length)
+    {
+        field.value = text;
+        field.setSelectionRange(position, position);
+        field.input();
+        return field.value;
+    }
+    assert.equal(enter('9f0000aa'), '9F 00 00 AA');
+    assert.equal(field.selectionStart, 11);
+    assert.equal(enter('aabb', 2), 'AA BB');
+    assert.equal(field.selectionStart, 2); // Backspace can cross a byte separator.
+    assert.equal(enter('9f\t00\nAa'), '9F 00 AA');
+    assert.equal(enter('9f0'), '9F 0'); // Keep an unfinished nibble; never pad with zero.
+    assert.equal(enter('9F GG'), '9F GG'); // Invalid data must remain visible for validation.
+    assert.equal(enter(''), '');
+    assert.equal(enter('aa '), 'AA ');
+    assert.equal(enter('ff'.repeat(256)).length, 767);
+    elements.get('spi-format').value = 'ascii';
+    assert.equal(enter('aabb\n'), 'aabb\n');
     console.log('Web UI: four command slots, independent RX, Flash restore/save, early edits, LED, diagnostics, SPI validation and no automatic SPI retry passed');
 }
 
