@@ -128,6 +128,16 @@ int test_entry(void)
     CHECK(memcmp(common + 1U, gateway, 4U) == 0);
     CHECK(socket_regs[0][0x1E] == 8U && socket_regs[1][0x1E] == 0U);
     CHECK(w5500_link());
+    CHECK(w5500_link_speed_mbps() == 10U);
+    common[0x2E] = 3U;
+    CHECK(w5500_link_speed_mbps() == 100U);
+    common[0x2E] = 7U; /* Duplex does not affect the speed. */
+    CHECK(w5500_link_speed_mbps() == 100U);
+    common[0x2E] = 2U; /* Ignore the speed bit while the link is down. */
+    CHECK(w5500_link_speed_mbps() == 0U);
+    common[0x2E] = 0U;
+    CHECK(w5500_link_speed_mbps() == 0U);
+    common[0x2E] = 1U;
     CHECK(w5500_listen());
     CHECK(w5500_state() == W5500_LISTEN);
     CHECK(socket_regs[0][4] == (APP_HTTP_PORT >> 8U));
@@ -160,6 +170,7 @@ int test_entry(void)
     socket_regs[0][0x20] = 0U;
     CHECK(!w5500_send(payload, sizeof(payload))); /* no TX space */
     fail_spi = true;
+    CHECK(w5500_link_speed_mbps() == 0U);
     CHECK(w5500_receive(received, sizeof(received)) == -1);
     CHECK(!w5500_healthy());
     fail_spi = false;

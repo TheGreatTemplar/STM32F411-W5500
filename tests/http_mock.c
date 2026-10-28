@@ -12,6 +12,7 @@ static size_t fragment_size;
 static char output[10000];
 static size_t output_size;
 static bool fail_send;
+static uint32_t link_speed_mbps;
 
 uint32_t board_millis(void);
 uint32_t board_millis(void)
@@ -22,6 +23,11 @@ uint32_t board_millis(void)
 bool w5500_link(void)
 {
     return true;
+}
+
+uint32_t w5500_link_speed_mbps(void)
+{
+    return link_speed_mbps;
 }
 
 uint8_t w5500_state(void)
@@ -83,6 +89,7 @@ static void prepare(const char *text)
     fragment_size = sizeof(input);
     now = 0U;
     fail_send = false;
+    link_speed_mbps = 100U;
     state = W5500_ESTABLISHED;
     http_reset();
 }
@@ -129,6 +136,7 @@ int test_entry(void)
     CHECK(strstr(output, "\"raw\":[0,4095]") != NULL);
     CHECK(strstr(output, "\"mv\":[0,3300]") != NULL);
     CHECK(strstr(output, "\"adc_ok\":true") != NULL);
+    CHECK(strstr(output, "\"link\":true,\"link_speed_mbps\":100") != NULL);
     CHECK(framing_ok());
     CHECK(state == 0x18U);
     now = APP_REQUEST_TIMEOUT_MS;
@@ -136,6 +144,18 @@ int test_entry(void)
     CHECK(state == W5500_CLOSED);
     http_poll(&adc);
     CHECK(state == W5500_LISTEN);
+
+    prepare("GET /api/adc HTTP/1.1\r\n\r\n");
+    link_speed_mbps = 10U;
+    http_poll(&adc);
+    CHECK(strstr(output, "\"link\":true,\"link_speed_mbps\":10") != NULL);
+    CHECK(framing_ok());
+
+    prepare("GET /api/adc HTTP/1.1\r\n\r\n");
+    link_speed_mbps = 0U;
+    http_poll(&adc);
+    CHECK(strstr(output, "\"link\":false,\"link_speed_mbps\":0") != NULL);
+    CHECK(framing_ok());
 
     prepare("GET / HTTP/1.1\r\n\r\n");
     http_poll(&adc);

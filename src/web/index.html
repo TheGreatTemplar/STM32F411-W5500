@@ -52,7 +52,7 @@
             </article>
         </section>
         <section class="details">
-            <div>Адрес<strong id="address">172.16.236.220:5025</strong></div>
+            <div>Адрес<strong id="address">172.16.236.220:5025 · —</strong></div>
             <div>Время работы<strong id="uptime">—</strong></div>
             <div>Измерений<strong id="samples">—</strong></div>
             <div>Опорное напряжение<strong id="vref">—</strong></div>
@@ -64,7 +64,7 @@
     </main>
     <script>
         const get = (id) => document.getElementById(id);
-        get('address').textContent = location.host;
+        get('address').textContent = location.host + ' · —';
         function clearReadings()
         {
             for (let i = 0; i < 2; ++i)
@@ -86,6 +86,9 @@
                     throw new Error('HTTP ' + response.status);
                 }
                 const data = await response.json();
+                const speed = data.link && (data.link_speed_mbps === 10 || data.link_speed_mbps === 100)
+                    ? data.link_speed_mbps + ' Мбит/с' : 'нет линка';
+                get('address').textContent = location.host + ' · ' + speed;
                 get('uptime').textContent = Math.floor(data.uptime_ms / 1000) + ' с';
                 get('samples').textContent = data.sample_count;
                 get('vref').textContent = (data.vref_mv / 1000).toFixed(3) + ' В';
@@ -105,6 +108,10 @@
             catch (error)
             {
                 clearReadings();
+                if (!error.message.startsWith('АЦП'))
+                {
+                    get('address').textContent = location.host + ' · —';
+                }
                 get('status').textContent = error.message.startsWith('АЦП') ? error.message : 'Нет свежих данных';
                 get('status').className = 'bad';
             }

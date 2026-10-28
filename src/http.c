@@ -53,17 +53,19 @@ static bool response(unsigned int status, const char *reason, const char *type, 
 static bool adc_response(const adc_snapshot_t *adc)
 {
     char json[384];
+    const uint32_t link_speed_mbps = w5500_link_speed_mbps();
     const uint32_t mv0 = ((uint32_t)adc->raw[0] * APP_ADC_VREF_MV + 2047U) / 4095U;
     const uint32_t mv1 = ((uint32_t)adc->raw[1] * APP_ADC_VREF_MV + 2047U) / 4095U;
     const int count =
         snprintf(json, sizeof(json),
                  "{\"raw\":[%u,%u],\"mv\":[%lu,%lu],\"vref_mv\":%u,"
-                 "\"adc_ok\":%s,\"link\":%s,\"sample_ms\":%lu,"
+                 "\"adc_ok\":%s,\"link\":%s,\"link_speed_mbps\":%lu,\"sample_ms\":%lu,"
                  "\"sample_count\":%lu,\"uptime_ms\":%lu}",
                  (unsigned int)adc->raw[0], (unsigned int)adc->raw[1], (unsigned long)mv0,
                  (unsigned long)mv1, APP_ADC_VREF_MV, adc->valid ? "true" : "false",
-                 w5500_link() ? "true" : "false", (unsigned long)adc->sample_ms,
-                 (unsigned long)adc->sample_count, (unsigned long)board_millis());
+                 link_speed_mbps != 0U ? "true" : "false", (unsigned long)link_speed_mbps,
+                 (unsigned long)adc->sample_ms, (unsigned long)adc->sample_count,
+                 (unsigned long)board_millis());
     return (count > 0) && ((size_t)count < sizeof(json)) &&
            response(200U, "OK", "application/json", json, (size_t)count);
 }

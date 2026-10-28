@@ -13,6 +13,7 @@
 bool w5500_init(void);
 bool w5500_healthy(void);
 bool w5500_link(void);
+uint32_t w5500_link_speed_mbps(void);
 uint8_t w5500_state(void);
 bool w5500_listen(void);
 void w5500_close(void);

@@ -144,6 +144,17 @@ bool w5500_link(void)
     return (read8(COMMON_BLOCK, 0x002EU) & 1U) != 0U;
 }
 
+uint32_t w5500_link_speed_mbps(void)
+{
+    /* PHYCFGR: bit 0 = link, bit 1 = negotiated speed (1: 100, 0: 10 Mbps). */
+    const uint8_t phy = read8(COMMON_BLOCK, 0x002EU);
+    if (!io_ok || ((phy & 1U) == 0U))
+    {
+        return 0U;
+    }
+    return (phy & 2U) != 0U ? 100U : 10U;
+}
+
 uint8_t w5500_state(void)
 {
     return read8(SOCKET_BLOCK, SN_SR);
