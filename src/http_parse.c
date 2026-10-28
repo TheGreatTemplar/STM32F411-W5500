@@ -148,6 +148,10 @@ http_route_t http_parse(const char *request, size_t size)
         return HTTP_BAD_REQUEST;
     }
     path_size = (size_t)(version - path);
+    if (!post && path_size == 12U && memcmp(path, "/api/library", 12U) == 0)
+    {
+        return HTTP_LIBRARY;
+    }
     if (!post && (path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0))
     {
         return HTTP_RTC;
@@ -160,10 +164,12 @@ http_route_t http_parse(const char *request, size_t size)
         ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)) ||
         ((path_size == 8U) && (memcmp(path, "/api/spi", 8U) == 0)) ||
         ((path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0)) ||
+        ((path_size == 12U) && (memcmp(path, "/api/library", 12U) == 0)) ||
         ((path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0)))
     {
         size_t body_size;
-        const bool payload = (path_size == 8U) || (path_size == 13U);
+        const bool payload = (path_size == 8U) || (path_size == 13U) ||
+                             (path_size == 12U && memcmp(path, "/api/library", 12U) == 0);
         if (!post)
         {
             return HTTP_POST_REQUIRED;
@@ -184,6 +190,10 @@ http_route_t http_parse(const char *request, size_t size)
         }
         if (payload)
         {
+            if (path_size == 12U)
+            {
+                return HTTP_LIBRARY_COMMAND;
+            }
             if ((path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0))
             {
                 return HTTP_SET_RTC;

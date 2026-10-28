@@ -313,10 +313,113 @@ static bool rtc_response(http_client_t *client, bool set)
     }
 }
 
+static bool library_number(const char *body, size_t size, size_t *offset, uint32_t *value, char end)
+{
+    size_t digits = 0U;
+    *value = 0U;
+    while (*offset < size && body[*offset] >= '0' && body[*offset] <= '9')
+    {
+        *value = *value * 10U + (uint32_t)(body[(*offset)++] - '0');
+        if (++digits > 3U)
+        {
+            return false;
+        }
+    }
+    return digits != 0U && *offset < size && body[(*offset)++] == end;
+}
+
+static bool library_response(http_client_t *client, bool command)
+{
+    size_t used;
+    size_t offset = 0U;
+    uint32_t id = 0U;
+    uint32_t name_size = 0U;
+    store_error_t error = STORE_OK;
+    bool listing = !command;
+    bool writing = false;
+    if (command)
+    {
+        const char *body;
+        size_t size;
+        for (offset = 0U; offset + 4U <= client->used; ++offset)
+        {
+            if (memcmp(client->request + offset, "\r\n\r\n", 4U) == 0)
+            {
+                break;
+            }
+        }
+        offset += 4U;
+        if (offset > client->used)
+        {
+            return false;
+        }
+        body = client->request + offset;
+        size = client->used - offset;
+        offset = 5U;
+        if (size >= 5U && memcmp(body, "list ", 5U) == 0 &&
+            library_number(body, size, &offset, &id, '\n') && offset == size &&
+            id < COMMAND_LIBRARY_SLOTS)
+        {
+            listing = true;
+        }
+        else if (size >= 5U && memcmp(body, "load ", 5U) == 0 &&
+                 library_number(body, size, &offset, &id, '\n') && offset == size)
+        {
+            error = command_library_load(id);
+        }
+        else if (size >= 7U && memcmp(body, "delete ", 7U) == 0)
+        {
+            offset = 7U;
+            error = library_number(body, size, &offset, &id, '\n') && offset == size
+                        ? command_library_delete(id)
+                        : STORE_INVALID;
+            writing = error == STORE_OK;
+        }
+        else if (size >= 5U && memcmp(body, "save ", 5U) == 0)
+        {
+            offset = 5U;
+            if (!library_number(body, size, &offset, &id, ' ') ||
+                !library_number(body, size, &offset, &name_size, '\n') ||
+                name_size > COMMAND_LIBRARY_NAME_BYTES || name_size >= size - offset ||
+                body[offset + name_size] != '\n')
+            {
+                error = STORE_INVALID;
+            }
+            else
+            {
+                error = command_library_save(id, body + offset, name_size,
+                                             body + offset + name_size + 1U,
+                                             size - offset - name_size - 1U);
+                writing = error == STORE_OK;
+            }
+        }
+        else
+        {
+            error = STORE_INVALID;
+        }
+    }
+    if (error != STORE_OK)
+    {
+        char text[32];
+        const int count = snprintf(text, sizeof(text), "{\"error\":%u}", (unsigned int)error);
+        return count > 0 && (size_t)count < sizeof(text) &&
+               response(client, error == STORE_INVALID || error == STORE_NAME ? 400U : 409U,
+                        "Library Error", "application/json", text, (size_t)count, "");
+    }
+    used = listing ? command_library_json(client->body, sizeof(client->body), id)
+                   : command_store_json(client->body, sizeof(client->body));
+    return used != 0U && response(client, writing ? 202U : 200U, writing ? "Accepted" : "OK",
+                                  "application/json", client->body, used, "");
+}
+
 static bool dispatch(http_client_t *client, http_route_t route, const adc_snapshot_t *adc)
 {
     switch (route)
     {
+    case HTTP_LIBRARY:
+        return library_response(client, false);
+    case HTTP_LIBRARY_COMMAND:
+        return library_response(client, true);
     case HTTP_RTC:
         return rtc_response(client, false);
     case HTTP_SET_RTC:

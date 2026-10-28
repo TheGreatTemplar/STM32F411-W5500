@@ -21,7 +21,9 @@ typedef enum
     HTTP_COMMANDS,
     HTTP_SAVE_COMMANDS,
     HTTP_RTC,
-    HTTP_SET_RTC
+    HTTP_SET_RTC,
+    HTTP_LIBRARY,
+    HTTP_LIBRARY_COMMAND
 } http_route_t;
 
 typedef struct

@@ -45,7 +45,7 @@
         #rtc-value { font-size: 26px; color: #6ed8c4; }
         #rtc-date { color: #a6b7c7; }
         .rtc-settings { margin-top: 12px; }
-        #rtc-message { font-size: 13px; margin: 8px 0 0; }
+        #rtc-message { font-size: 13px; margin: 0; color: #a6b7c7; }
         .rtc-control .hint { margin: 8px 0 0; }
         input[type="date"], input[type="time"] { color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 6px 8.5px; font: inherit; min-width: 0; }
         .spi-control { margin-top: 20px; padding: 20.4px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
@@ -59,9 +59,18 @@
         .result-title .hint { margin: 0; }
         .command-card .spi-output { margin: 6px 0; font-size: 13px; }
         .input-error { background: #ffe082; color: #332600 !important; padding: 6px 10px; border-radius: 6px; }
-        .command-message { min-height: 20px; font-size: 13px; margin: 8px 0; }
-        .store-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
-        #store-status { font-size: 13px; color: #a6b7c7; }
+        .command-heading { display: grid; grid-template-columns: minmax(0,42%) minmax(0,1fr); gap: 16px; align-items: center; height: 44px; }
+        .command-heading label { font-size: 14px; line-height: 20px; }
+        .command-message { height: 32px; min-height: 0; line-height: 20px; font-size: 13px; margin: 0; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .library-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
+        .library-controls input, .library-controls select { max-width: 100%; min-width: 160px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 6px 8px; font: inherit; }
+        .library-controls button { padding: 8px 14px; }
+        .rtc-title { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        @media (max-width: 520px) { .command-heading { grid-template-columns: minmax(0,1fr); grid-template-rows: 40px 32px; gap: 0; height: 76px; } }
+        .store-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 16px; margin-bottom: 16px; height: 44px; }
+        #store-status { font-size: 13px; color: #a6b7c7; flex: 1; min-width: 0; height: 32px; line-height: 20px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #library-status { flex: none; }
+        @media (max-width: 520px) { .store-bar { display: grid; grid-template-rows: 32px 20px; gap: 0; height: 64px; } #library-status { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
         @media (max-width: 520px) { .command-editor { grid-template-columns: minmax(0,1fr); } .command-editor button { justify-self: start; } }
         .spi-settings { display: flex; flex-wrap: wrap; gap: 16px; margin: 15px 0; align-items: stretch; }
         .spi-settings fieldset { margin: 0; height: 84px; padding: 8px 10.2px; }
@@ -70,7 +79,8 @@
         .spi-selects select { padding: 4px 8.5px; }
         .channel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
         .channel-value { white-space: nowrap; }
-        .command-message:empty, #led-message:empty { display: none; }
+        .command-message:empty { visibility: hidden; }
+        #led-message:empty { display: none; }
         fieldset { border: 1px solid #476273; border-radius: 10px; padding: 10.2px; }
         legend, .hint { color: #a6b7c7; font-size: 13px; }
         label { display: inline-flex; align-items: center; gap: 6px; }
@@ -98,7 +108,7 @@
     <main>
         <header>
             <div><div class="eyebrow">BLACK PILL / W5500</div><h1>Монитор STM32F411</h1></div>
-            <div class="toolbar"><nav class="language-switch" aria-label="Выбор языка"><button type="button" id="lang-en" lang="en" aria-pressed="false">Eng</button><button type="button" id="lang-ru" lang="ru" aria-pressed="true">Рус</button></nav><div id="status" role="status">Подключение…</div><button type="button" id="diag-open">Диагностика W5500</button></div>
+            <div class="toolbar"><nav class="language-switch" aria-label="Выбор языка"><button type="button" id="lang-en" lang="en" aria-pressed="false">Eng</button><button type="button" id="lang-ru" lang="ru" aria-pressed="true">Рус</button><button type="button" id="lang-ja" lang="ja" aria-pressed="false">日本語</button></nav><div id="status" role="status">Подключение…</div><button type="button" id="diag-open">Диагностика W5500</button></div>
         </header>
         <section class="channels" aria-label="Каналы АЦП">
             <article>
@@ -121,15 +131,13 @@
             <div>Опорное напряжение<strong id="vref">—</strong></div>
         </section>
         <section class="rtc-control" aria-label="Часы микроконтроллера">
-            <div class="rtc-header"><h2>Часы стенда · RTC / LSE</h2><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
+            <div class="rtc-header"><div class="rtc-title"><h2>Часы стенда · RTC / LSE</h2><span id="rtc-message" role="status">Запуск LSE…</span></div><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
             <div class="rtc-settings">
                 <label>Дата<input type="date" id="rtc-input-date" min="2000-01-01" max="2099-12-31"></label>
                 <label>Время<input type="time" id="rtc-input-time" step="1"></label>
                 <button type="button" id="rtc-set" disabled>Установить</button>
                 <button type="button" id="rtc-sync" disabled>Синхронизировать с ПК</button>
             </div>
-            <p id="rtc-message" role="status">Запуск LSE…</p>
-            <p class="hint">Можно задать произвольную дату 2000–2099. Синхронизация берёт местное время компьютера только по нажатию кнопки.</p>
         </section>
         <section class="led-control" aria-label="Управление светодиодом">
             <div class="led-header"><h2>Синий светодиод · PC13</h2><div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div><span id="led-state" role="status">Состояние: —</span></div>
@@ -158,32 +166,36 @@
             </div>
             <p class="hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
             <p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p>
-            <div class="store-bar"><button type="button" id="store-save" disabled>Сохранить 4 команды во Flash</button><span id="store-status" role="status">Проверка W25Q64JV…</span></div>
+            <div class="library-controls">
+                <label>Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="64">Новый набор</option></select></label>
+                <label>Имя<input type="text" id="library-name" maxlength="64" value="Default" aria-label="Имя набора, до 32 символов"></label>
+                <button type="button" id="library-load" disabled>Загрузить</button>
+                <button type="button" id="store-save" disabled>Сохранить</button>
+                <button type="button" id="library-new" disabled>Сохранить как</button>
+                <button type="button" id="library-delete" disabled>Удалить</button>
+            </div>
+            <div class="store-bar"><span id="store-status" role="status">Проверка W25Q64JV…</span><span id="library-status" class="hint" role="status"></span></div>
             <div class="command-card">
-                <label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label>
+                <div class="command-heading"><label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label><p id="spi-message-0" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
-                <p id="spi-message-0" class="command-message" role="status"></p>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-0" readonly aria-label="TX команды 1">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-0" readonly aria-label="RX команды 1">—</textarea>
             </div>
             <div class="command-card">
-                <label for="spi-command-1">Команда 2 · передаваемые данные · до 256 байт</label>
+                <div class="command-heading"><label for="spi-command-1">Команда 2 · передаваемые данные · до 256 байт</label><p id="spi-message-1" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1">Передать</button></div>
-                <p id="spi-message-1" class="command-message" role="status"></p>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-1" readonly aria-label="TX команды 2">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-1" readonly aria-label="RX команды 2">—</textarea>
             </div>
             <div class="command-card">
-                <label for="spi-command-2">Команда 3 · передаваемые данные · до 256 байт</label>
+                <div class="command-heading"><label for="spi-command-2">Команда 3 · передаваемые данные · до 256 байт</label><p id="spi-message-2" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2">Передать</button></div>
-                <p id="spi-message-2" class="command-message" role="status"></p>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-2" readonly aria-label="TX команды 3">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-2" readonly aria-label="RX команды 3">—</textarea>
             </div>
             <div class="command-card">
-                <label for="spi-command-3">Команда 4 · передаваемые данные · до 256 байт</label>
+                <div class="command-heading"><label for="spi-command-3">Команда 4 · передаваемые данные · до 256 байт</label><p id="spi-message-3" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3">Передать</button></div>
-                <p id="spi-message-3" class="command-message" role="status"></p>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-3" readonly aria-label="TX команды 4">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
             </div>
@@ -392,7 +404,230 @@
             "62,5 кГц": "62.5 kHz",
             "125 кГц": "125 kHz",
             "250 кГц": "250 kHz",
-            "500 кГц": "500 kHz"
+            "500 кГц": "500 kHz",
+            "Набор": "Set",
+            "Сохранённые наборы": "Saved sets",
+            "Новый набор": "New set",
+            "Имя": "Name",
+            "Имя набора, до 32 символов": "Set name, up to 32 characters",
+            "Загрузить": "Load",
+            "Сохранить": "Save",
+            "Сохранить как": "Save as",
+            "Удалить": "Delete",
+            "Имя: от 1 до 32 символов, без управляющих символов и слешей.": "Name: 1 to 32 characters, without control characters or slashes.",
+            "Чтение библиотеки:": "Scanning library:",
+            "Наборов:": "Sets:",
+            "недоступно:": "unavailable:",
+            "Слот занят чужими или повреждёнными данными": "Slot contains foreign or damaged data",
+            "Набор не найден": "Set not found",
+            "Библиотека заполнена": "Library full",
+            "Некорректное имя набора": "Invalid set name",
+            "Такое имя уже существует": "Name already exists",
+            "Заменить несохранённые команды выбранным набором?": "Replace unsaved commands with the selected set?",
+            "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
+};
+        const japaneseTranslations = {
+            "Монитор STM32F411": "STM32F411 モニター",
+            "команда принята в очередь": "コマンドをキューに追加しました",
+            "неожиданное значение": "想定外の値",
+            "очередь:": "キュー:",
+            "передано": "送信済み",
+            "передача, ожидается подтверждение…": "転送中・確認を待っています…",
+            "В": "V",
+            "Гц": "Hz",
+            "Мбит/с": "Mbit/s",
+            "байт": "バイト",
+            "мкс": "µs",
+            "отклик:": "応答:",
+            "мс": "ms",
+            "режим": "モード",
+            "с": "秒",
+            "из 8 аппаратных": "/ 8 ハードウェアソケット",
+            "ASCII-текст": "ASCII テキスト",
+            "HEX-байты": "HEX バイト",
+            "ASCII: разрешены только символы с кодами 1…127.": "ASCII: 文字コード 1～127 のみ使用できます。",
+            "Flash занята": "フラッシュは処理中です",
+            "Flash не найдена": "フラッシュが見つかりません",
+            "HEX: введи полные пары цифр, например 9F 00 00 00.": "HEX: 9F 00 00 00 のように、2 桁ずつ入力してください。",
+            "HEX: разрешены только 0–9, A–F и пробельные разделители. Ввод отклонён целиком.": "HEX: 0～9、A～F、空白のみ使用できます。入力全体を拒否しました。",
+            "IP / HTTP порт": "IP / HTTP ポート",
+            "LSB первым": "LSB ファースト",
+            "MSB первым": "MSB ファースト",
+            "LSE ещё не готов…": "LSE の準備ができていません…",
+            "LSE не запустился: проверь кварц 32,768 кГц": "LSE が起動しません。32.768 kHz の水晶を確認してください",
+            "PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND": "PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · 3.3 V ロジック · 共通 GND",
+            "RTC · LSE 32,768 кГц": "RTC · LSE 32.768 kHz",
+            "RTC использует другой источник тактирования": "RTC は別のクロック源を使用しています",
+            "RTC синхронизирован с компьютером": "RTC を PC と同期しました",
+            "RX ждёт, Б": "RX 待機中 (B)",
+            "RX/TX, КБ": "RX/TX (KB)",
+            "TX свободно, Б": "TX 空き (B)",
+            "SPI свободна": "SPI 待機中",
+            "SPI-консоль": "SPI コンソール",
+            "SPI2 · внешнее устройство": "SPI2 · 外部デバイス",
+            "W25Q64JV · 8 Мбайт ·": "W25Q64JV · 8 MB ·",
+            "W5500 · сеть и контроллер": "W5500 · ネットワークとコントローラー",
+            "АЦП": "ADC",
+            "АЦП: ошибка измерения": "ADC: 測定エラー",
+            "Адрес": "アドレス",
+            "Активный CS": "アクティブ CS",
+            "Аппаратные сокеты": "ハードウェアソケット",
+            "Байты последней передачи к устройству": "最後にデバイスへ送信したバイト",
+            "Байты с MISO, принятые во время этой передачи": "この転送中に MISO から受信したバイト",
+            "В очередь": "キューへ",
+            "ВКЛ": "オン",
+            "ВЫКЛ": "オフ",
+            "Версия чипа": "チップのバージョン",
+            "Включён": "点灯",
+            "Время": "時刻",
+            "Время RTC установлено": "RTC の日時を設定しました",
+            "Время не установлено": "日時が未設定です",
+            "Время работы": "稼働時間",
+            "Выключен": "消灯",
+            "Дата": "日付",
+            "Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.": "12 ビットの 2 チャンネル。更新間隔: 250 ms。電圧は設定した基準電圧から計算します。",
+            "Диагностика W5500": "W5500 診断",
+            "Дуплекс": "デュプレックス",
+            "Закрыть": "閉じる",
+            "Запись W25Q64JV · не отключай питание до завершения…": "W25Q64JV に書き込み中・完了まで電源を切らないでください…",
+            "Запуск LSE…": "LSE 起動中…",
+            "Измерений": "サンプル数",
+            "Каналы АЦП": "ADC チャンネル",
+            "Клиент": "クライアント",
+            "Код АЦП:": "ADC 値:",
+            "Команда": "コマンド",
+            "Команда выполнена": "コマンド完了",
+            "Конфликт IP (флаг IR)": "IP アドレスの競合 (IR フラグ)",
+            "Максимум 256 байт за одну транзакцию.": "1 回の転送は最大 256 バイトです。",
+            "Максимум 256 байт. Ввод отклонён целиком.": "最大 256 バイトです。入力全体を拒否しました。",
+            "Максимум 256 байт. Вставка отклонена целиком.": "最大 256 バイトです。貼り付け全体を拒否しました。",
+            "Максимум 768 символов для сохранения.": "保存するコマンドは最大 768 文字です。",
+            "Маска": "サブネットマスク",
+            "Можно задать произвольную дату 2000–2099. Синхронизация берёт местное время компьютера только по нажатию кнопки.": "2000～2099 年の任意の日付を設定できます。同期ボタンを押した場合のみ PC の現地時刻を使用します。",
+            "На связи": "接続中",
+            "Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.": "設定は 4 つのコマンドに共通です。1 回の転送中は CS を維持し、1 フレームは 8 ビットです。読み出しクロックには 00/FF を追加します。RX の値だけでは正常な応答を確認できません。",
+            "Не удалось обновить снимок. Предыдущие данные могут быть устаревшими.": "診断情報を更新できませんでした。前のデータは古い可能性があります。",
+            "Некорректные данные календаря RTC": "RTC のカレンダーデータが無効です",
+            "Некорректные команды": "コマンドが無効です",
+            "Неожиданный JEDEC ID": "想定外の JEDEC ID",
+            "Несовместимая сохранённая конфигурация RTC": "保持された RTC 設定に互換性がありません",
+            "Нет линка": "リンクなし",
+            "нет линка": "リンクなし",
+            "Нет подтверждения команды. Проверь связь.": "コマンドを確認できません。接続を確認してください。",
+            "Нет подтверждения сохранения. Проверь Flash/связь и обнови страницу; автоповтора записи нет.": "保存を確認できません。フラッシュと接続を確認し、再読み込みしてください。書き込みの自動再試行はありません。",
+            "Нет подтверждения установки RTC. Проверь показания; автоматического повтора нет.": "RTC の設定を確認できません。表示を確認してください。自動再試行はありません。",
+            "Нет подтверждения: команда могла выполниться. Автоповтора нет; проверь устройство перед повторной передачей.": "確認できません。コマンドが実行された可能性があります。自動再試行はありません。再送信前にデバイスを確認してください。",
+            "Нет свежих данных": "最新のデータがありません",
+            "Нет свежих данных RTC": "最新の RTC データがありません",
+            "Обнаружен": "検出",
+            "Обновить": "更新",
+            "Ожидание данных…": "データ待機中…",
+            "Опорное напряжение": "基準電圧",
+            "Отправка команды…": "コマンド送信中…",
+            "Очередь заполнена: дождись выполнения принятых команд.": "キューが満杯です。受け付けたコマンドの完了を待ってください。",
+            "Очередь полна": "キュー満杯",
+            "Ошибка Flash": "フラッシュエラー",
+            "Ошибка RTC": "RTC エラー",
+            "Ошибка SPI1 / защиты Flash": "SPI1 またはフラッシュ保護のエラー",
+            "Ошибка проверки записи": "書き込み検証エラー",
+            "Ошибок обмена SPI": "SPI エラー数",
+            "Передать": "送信",
+            "Передача №": "転送 #",
+            "Повтор передачи RTR / RCR": "再送設定 RTR / RCR",
+            "Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.": "入力範囲: 0～VDDA (公称 3.3 V)。信号源と基板の GND を共通にしてください。Black Pill の KEY ボタンは PA0 に影響します。",
+            "Подключение…": "接続待機中…",
+            "Подтверждено TCP TX, байт": "TCP TX 確認済みバイト数",
+            "Попыток инициализации W5500": "W5500 初期化試行回数",
+            "Порт": "ポート",
+            "Порядок битов": "ビット順",
+            "Последние 8 Кбайт заняты чужими данными": "末尾 8 KB に別のデータがあります",
+            "Проверка W25Q64JV…": "W25Q64JV 確認中…",
+            "Прочитано из TCP RX, байт": "TCP RX 読み出しバイト数",
+            "Прошивка · счётчики с запуска MCU": "ファームウェア · MCU 起動後のカウンター",
+            "Режим SPI": "SPI モード",
+            "Синий светодиод · PC13": "青色 LED · PC13",
+            "Синхронизировать с ПК": "PC と同期",
+            "Снимок включает соединение, по которому запрошена диагностика. Флаги IRQ читаются без сброса.": "この診断用接続も情報に含まれます。IRQ フラグはクリアせずに読み取ります。",
+            "Снимок обновлён. Нажми «Обновить» для нового снимка.": "診断情報を更新しました。最新情報を取得するには「更新」を押してください。",
+            "Сокетов HTTP в прошивке": "HTTP ソケット数",
+            "Состояние": "状態",
+            "Состояние: —": "状態: —",
+            "Сохранение во внешнюю Flash…": "外部フラッシュに保存中…",
+            "Сохранить 4 команды во Flash": "4 コマンドをフラッシュに保存",
+            "Счётчики относятся к драйверу TCP-сокета; это не полный Ethernet-трафик, не число пакетов и не ошибки CRC. Значения 32-битные, при переполнении начинаются с нуля.": "カウンターは TCP ソケットドライバーの値です。Ethernet 全体の通信量、パケット数、CRC エラー数ではありません。32 ビットの上限で 0 に戻ります。",
+            "Тайм-аут Flash": "フラッシュのタイムアウト",
+            "Тайм-аут установки RTC": "RTC 初期化のタイムアウト",
+            "Тайм-аутов отправки (ПО)": "送信タイムアウト数 (ソフトウェア)",
+            "Укажи существующую дату 2000–2099 и время 00:00:00–23:59:59.": "2000～2099 年の有効な日付と 00:00:00～23:59:59 の時刻を入力してください。",
+            "Управление светодиодом": "LED 制御",
+            "Уровень PA0": "PA0 レベル",
+            "Уровень PA1": "PA1 レベル",
+            "Установить": "設定",
+            "Установка RTC…": "RTC 設定中…",
+            "Флаг не установлен": "フラグなし",
+            "Формат": "形式",
+            "Частота": "周波数",
+            "Часы микроконтроллера": "マイコン時計",
+            "Часы стенда · RTC / LSE": "装置の時計 · RTC / LSE",
+            "Чтение диагностики…": "診断情報を読み出し中…",
+            "Шлюз": "ゲートウェイ",
+            "команды ещё не сохранены": "コマンドは未保存です",
+            "сохранена версия": "保存済みバージョン",
+            "Выбор языка": "言語",
+            "Русский": "ロシア語",
+            "Команда 1 · передаваемые данные · до 256 байт": "コマンド 1 · 送信データ · 最大 256 バイト",
+            "SPI-команда 1": "SPI コマンド 1",
+            "RX команды 1": "コマンド 1 RX",
+            "TX команды 1": "コマンド 1 TX",
+            "Команда 2 · передаваемые данные · до 256 байт": "コマンド 2 · 送信データ · 最大 256 バイト",
+            "SPI-команда 2": "SPI コマンド 2",
+            "RX команды 2": "コマンド 2 RX",
+            "TX команды 2": "コマンド 2 TX",
+            "Команда 3 · передаваемые данные · до 256 байт": "コマンド 3 · 送信データ · 最大 256 バイト",
+            "SPI-команда 3": "SPI コマンド 3",
+            "RX команды 3": "コマンド 3 RX",
+            "TX команды 3": "コマンド 3 TX",
+            "Команда 4 · передаваемые данные · до 256 байт": "コマンド 4 · 送信データ · 最大 256 バイト",
+            "SPI-команда 4": "SPI コマンド 4",
+            "RX команды 4": "コマンド 4 RX",
+            "TX команды 4": "コマンド 4 TX",
+            "Канал 1": "チャンネル 1",
+            "Канал 2": "チャンネル 2",
+            "1 МГц": "1 MHz",
+            "2 МГц": "2 MHz",
+            "4 МГц": "4 MHz",
+            "6 МГц": "6 MHz",
+            "8 МГц": "8 MHz",
+            "10 МГц": "10 MHz",
+            "12 МГц": "12 MHz",
+            "14 МГц": "14 MHz",
+            "16 МГц": "16 MHz",
+            "18 МГц": "18 MHz",
+            "20 МГц": "20 MHz",
+            "62,5 кГц": "62.5 kHz",
+            "125 кГц": "125 kHz",
+            "250 кГц": "250 kHz",
+            "500 кГц": "500 kHz",
+            "Набор": "セット",
+            "Сохранённые наборы": "保存済みセット",
+            "Новый набор": "新規セット",
+            "Имя": "名前",
+            "Имя набора, до 32 символов": "セット名、最大 32 文字",
+            "Загрузить": "読み込み",
+            "Сохранить": "保存",
+            "Сохранить как": "名前を付けて保存",
+            "Удалить": "削除",
+            "Имя: от 1 до 32 символов, без управляющих символов и слешей.": "名前は 1～32 文字で、制御文字やスラッシュは使用できません。",
+            "Чтение библиотеки:": "ライブラリ確認中:",
+            "Наборов:": "セット数:",
+            "недоступно:": "使用不可:",
+            "Слот занят чужими или повреждёнными данными": "スロットに別のデータまたは破損したデータがあります",
+            "Набор не найден": "セットが見つかりません",
+            "Библиотека заполнена": "ライブラリが満杯です",
+            "Некорректное имя набора": "セット名が無効です",
+            "Такое имя уже существует": "同じ名前が既にあります",
+            "Заменить несохранённые команды выбранным набором?": "未保存のコマンドを選択したセットで置き換えますか？",
+            "Удалить выбранный набор из Flash?": "選択したセットをフラッシュから削除しますか？"
 };
         const words = Object.keys(translations).sort((a, b) => b.length - a.length)
             .map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
@@ -400,12 +635,18 @@
         function translate(text)
         {
             const raw = String(text);
-            return language === 'en' ? raw.replace(translationPattern, (match, prefix, key) => prefix + translations[key]) : raw;
+            const dictionary = language === 'ja' ? japaneseTranslations : translations;
+            return language === 'ru' ? raw : raw.replace(translationPattern, (match, prefix, key) => prefix + dictionary[key]);
         }
         function setText(element, value)
         {
             const raw = String(value);
             element.textContent = translate(raw);
+            if (element.id === 'store-status' || element.id === 'rtc-message')
+            {
+                originalAttributes.set(element, {title: raw});
+                element.setAttribute('title', translate(raw));
+            }
             if (element.firstChild)
             {
                 originalText.set(element.firstChild, raw);
@@ -413,14 +654,14 @@
         }
         function applyLanguage(next)
         {
-            language = next === 'en' ? 'en' : 'ru';
+            language = next === 'en' || next === 'ja' ? next : 'ru';
             document.documentElement.lang = language;
             document.title = translate('Монитор STM32F411');
             const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
             let node;
             while ((node = walker.nextNode()))
             {
-                if (node.parentElement.closest('script, style, textarea, .language-switch'))
+                if (node.parentElement.closest('script, style, textarea, .language-switch, [data-user-text]'))
                 {
                     continue;
                 }
@@ -452,6 +693,7 @@
             }
             get('lang-en').setAttribute('aria-pressed', String(language === 'en'));
             get('lang-ru').setAttribute('aria-pressed', String(language === 'ru'));
+            get('lang-ja').setAttribute('aria-pressed', String(language === 'ja'));
             try
             {
                 localStorage.setItem('stm32f411-language', language);
@@ -501,6 +743,9 @@
         {
             setText(get('spi-message-' + index), text);
             get('spi-message-' + index).className = 'command-message' + (error ? ' input-error' : '');
+            const element = get('spi-message-' + index);
+            originalAttributes.set(element, {title: String(text)});
+            element.setAttribute('title', translate(text));
         }
         function spiButtons()
         {
@@ -555,6 +800,11 @@
             rememberCommand(index);
             markDirty();
         }
+        let pendingLibrary = null;
+        let libraryBusy = false;
+        let librarySets = [];
+        let selectedSet = 64;
+        let libraryLoaded = false;
         let pendingSave = null;
         let pendingStoreLoad = true;
         let storeWaiting = false;
@@ -685,7 +935,7 @@
         }
         function draftSnapshot()
         {
-            return JSON.stringify([settingsLine(), ...Array.from({length: 4}, (_, i) => get('spi-command-' + i).value)]);
+            return JSON.stringify([get('library-name').value || '', settingsLine(), ...Array.from({length: 4}, (_, i) => get('spi-command-' + i).value)]);
         }
         function markDirty()
         {
@@ -740,9 +990,9 @@
             spiButtons();
             wakeUpdate();
         }
-        function queueSave()
+        function queueSave(asNew = false)
         {
-            if (saveBusy || !flashReady)
+            if (saveBusy || !flashReady || storeWaiting || libraryBusy)
             {
                 return;
             }
@@ -758,21 +1008,30 @@
                     return;
                 }
             }
-            pendingSave = settingsLine() + '\nlengths=' + texts.map((text) => text.length).join(',') + '\n' + texts.join('');
+            const name = (get('library-name').value || '').trim();
+            if (!name || Array.from(name).length > 32 || /[\x00-\x1F\x7F-\x9F/\\]/.test(name) || name === '.' || name === '..')
+            {
+                get('store-status').className = 'input-error';
+                setText(get('store-status'), 'Имя: от 1 до 32 символов, без управляющих символов и слешей.');
+                return;
+            }
+            const snapshot = settingsLine() + '\nlengths=' + texts.map((text) => text.length).join(',') + '\n' + texts.join('');
+            pendingSave = 'save ' + (asNew ? 64 : selectedSet) + ' ' + new TextEncoder().encode(name).length + '\n' + name + '\n' + snapshot;
             saveFingerprint = draftSnapshot();
             saveBusy = true;
-            get('store-save').disabled = true;
+            libraryButtons();
             get('store-status').className = '';
             setText(get('store-status'), 'Сохранение во внешнюю Flash…');
             wakeUpdate();
         }
         function showStore(data, initial)
         {
-            const errors = {1: 'Flash не найдена', 2: 'Неожиданный JEDEC ID', 3: 'Последние 8 Кбайт заняты чужими данными',
-                4: 'Flash занята', 5: 'Некорректные команды', 6: 'Ошибка SPI1 / защиты Flash', 7: 'Тайм-аут Flash', 8: 'Ошибка проверки записи'};
+            const errors = libraryErrors;
             flashReady = data.present && data.ready;
-            if (initial && data.has_saved && !draftDirty)
+            if (initial && data.has_saved && !data.scanning && !draftDirty)
             {
+                selectedSet = data.id;
+                get('library-name').value = data.name || 'Default';
                 const settings = data.settings;
                 get('spi-hz').value = String(settings.hz);
                 get('spi-format').value = settings.format;
@@ -786,11 +1045,23 @@
                     get('spi-command-' + i).value = data.commands[i];
                     formatHexInput(get('spi-command-' + i));
                     rememberCommand(i);
+                    spiMessage(i, '');
                 }
                 markDirty();
                 draftDirty = false;
             }
-            storeWaiting = data.busy;
+            const completed = saveBusy && !data.busy && !data.scanning;
+            storeWaiting = data.busy || data.scanning;
+            if (data.scanning && !draftDirty)
+            {
+                pendingStoreLoad = true;
+            }
+            if (data.scanning)
+            {
+                setText(get('store-status'), 'Чтение библиотеки: ' + data.scan + ' / 64');
+                libraryButtons();
+                return;
+            }
             nextStorePoll = Date.now() + 500;
             if (data.busy)
             {
@@ -806,8 +1077,96 @@
                 setText(get('store-status'), data.error ? (errors[data.error] || 'Ошибка Flash') :
                     ('W25Q64JV · 8 Мбайт · ' + (data.has_saved ? 'сохранена версия ' + data.sequence : 'команды ещё не сохранены')));
             }
-            get('store-save').disabled = !flashReady || saveBusy || data.busy;
+            if (completed && data.save_ok)
+            {
+                selectedSet = data.has_saved ? data.id : 64;
+                libraryLoaded = false;
+            }
+            if (flashReady && !libraryLoaded && !pendingLibrary && !libraryBusy)
+            {
+                pendingLibrary = {kind: 'list', offset: 0};
+            }
+            libraryButtons();
         }
+        const libraryErrors = {1: 'Flash не найдена', 2: 'Неожиданный JEDEC ID', 3: 'Слот занят чужими или повреждёнными данными',
+            4: 'Flash занята', 5: 'Некорректные команды', 6: 'Ошибка SPI1 / защиты Flash', 7: 'Тайм-аут Flash',
+            8: 'Ошибка проверки записи', 9: 'Набор не найден', 10: 'Библиотека заполнена', 11: 'Некорректное имя набора', 12: 'Такое имя уже существует'};
+        function libraryButtons()
+        {
+            const busy = saveBusy || storeWaiting || libraryBusy || !flashReady;
+            get('store-save').disabled = busy;
+            get('library-new').disabled = busy;
+            get('library-load').disabled = busy || Number(get('library-select').value) >= 64;
+            get('library-delete').disabled = busy || Number(get('library-select').value) >= 64;
+        }
+        function libraryCatalog(data, offset)
+        {
+            if (data.scanning)
+            {
+                libraryLoaded = false;
+                return;
+            }
+            if (offset === 0)
+            {
+                librarySets = [];
+            }
+            librarySets.push(...data.sets);
+            if (data.next !== null)
+            {
+                pendingLibrary = {kind: 'list', offset: data.next};
+                return;
+            }
+            const selection = get('library-select').value;
+            get('library-select').replaceChildren();
+            const empty = document.createElement('option');
+            empty.value = '64';
+            setText(empty, 'Новый набор');
+            get('library-select').append(empty);
+            for (const item of librarySets)
+            {
+                const option = document.createElement('option');
+                option.value = String(item.id);
+                option.setAttribute('data-user-text', '');
+                option.textContent = item.name;
+                get('library-select').append(option);
+            }
+            get('library-select').value = librarySets.some((item) => item.id === selectedSet) ? String(selectedSet) :
+                (librarySets.some((item) => String(item.id) === selection) ? selection : '64');
+            setText(get('library-status'), 'Наборов: ' + data.used + ' / 64 · недоступно: ' + data.blocked);
+            libraryLoaded = true;
+        }
+        function queueLibrary(kind)
+        {
+            if (libraryBusy || saveBusy || !flashReady || storeWaiting)
+            {
+                return;
+            }
+            const id = Number(get('library-select').value);
+            if (id >= 64 || !Number.isInteger(id))
+            {
+                return;
+            }
+            if (kind === 'load' && draftDirty && !confirm(translate('Заменить несохранённые команды выбранным набором?')))
+            {
+                return;
+            }
+            if (kind === 'delete' && !confirm(translate('Удалить выбранный набор из Flash?')))
+            {
+                return;
+            }
+            pendingLibrary = {kind, id};
+            libraryBusy = true;
+            libraryButtons();
+            wakeUpdate();
+        }
+        get('library-select').addEventListener('change', libraryButtons);
+        get('library-name').addEventListener('input', () =>
+        {
+            draftDirty = true;
+        });
+        get('library-load').addEventListener('click', () => queueLibrary('load'));
+        get('library-delete').addEventListener('click', () => queueLibrary('delete'));
+        get('library-new').addEventListener('click', () => queueSave(true));
         for (let i = 0; i < 4; ++i)
         {
             get('spi-send-' + i).addEventListener('click', () => queueSpi(i));
@@ -865,7 +1224,7 @@
                 markDirty();
             });
         }
-        get('store-save').addEventListener('click', queueSave);
+        get('store-save').addEventListener('click', () => queueSave(false));
         function diagnosticCards(id, items)
         {
             const target = get(id);
@@ -1006,6 +1365,13 @@
             }
             const storage = clock === null && command === null && spi === null && !diagnostics && save === null &&
                 (pendingStoreLoad || storeWaiting) && Date.now() >= nextStorePoll;
+            const library = clock === null && command === null && spi === null && !diagnostics && save === null && !storage ? pendingLibrary : null;
+            if (library !== null)
+            {
+                pendingLibrary = null;
+                libraryBusy = true;
+                libraryButtons();
+            }
             const initialStore = storage && pendingStoreLoad;
             if (storage)
             {
@@ -1037,15 +1403,46 @@
                     setText(get('rtc-message'), clock.sync ? 'RTC синхронизирован с компьютером' : 'Время RTC установлено');
                     return;
                 }
+                if (library !== null)
+                {
+                    const reply = await fetch('/api/library', library.kind === 'list' && library.offset === 0 ?
+                        {cache: 'no-store', signal: controller.signal} : {method: 'POST', headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'},
+                            body: library.kind === 'list' ? 'list ' + library.offset + '\n' : library.kind + ' ' + library.id + '\n', signal: controller.signal});
+                    const result = await reply.json();
+                    if (!reply.ok)
+                    {
+                        throw new Error(libraryErrors[result.error] || 'Ошибка Flash');
+                    }
+                    if (library.kind === 'list')
+                    {
+                        libraryCatalog(result, library.offset);
+                    }
+                    else if (library.kind === 'load')
+                    {
+                        draftDirty = false;
+                        showStore(result, true);
+                        selectedSet = result.id;
+                    }
+                    else
+                    {
+                        saveBusy = true;
+                        saveFingerprint = '';
+                        showStore(result, false);
+                    }
+                    return;
+                }
                 if (save !== null || storage)
                 {
                     const options = save !== null ? {method: 'POST',
                         headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'},
                         body: save, signal: controller.signal} : {cache: 'no-store', signal: controller.signal};
-                    const reply = await fetch('/api/commands', options);
+                    const reply = await fetch(save !== null ? '/api/library' : '/api/commands', options);
                     if (!reply.ok)
                     {
-                        throw new Error((await reply.text()).trim());
+                        const failure = await reply.json();
+                        const error = new Error(libraryErrors[failure.error] || 'Ошибка Flash');
+                        error.rejected = true;
+                        throw error;
                     }
                     showStore(await reply.json(), initialStore);
                     return;
@@ -1127,14 +1524,22 @@
                     setText(get('rtc-message'), 'Нет подтверждения установки RTC. Проверь показания; автоматического повтора нет.');
                     return;
                 }
+                if (library !== null)
+                {
+                    get('store-status').className = 'input-error';
+                    setText(get('store-status'), error.message);
+                    return;
+                }
                 if (save !== null || storage)
                 {
                     saveBusy = false;
-                    storeWaiting = true;
+                    storeWaiting = !error.rejected;
                     pendingStoreLoad = initialStore;
                     nextStorePoll = Date.now() + 1000;
                     get('store-save').disabled = true;
-                    setText(get('store-status'), 'Нет подтверждения сохранения. Проверь Flash/связь и обнови страницу; автоповтора записи нет.');
+                    get('store-status').className = 'input-error';
+                    setText(get('store-status'), error.rejected ? error.message : 'Нет подтверждения сохранения. Проверь Flash/связь и обнови страницу; автоповтора записи нет.');
+                    libraryButtons();
                     return;
                 }
                 if (spi !== null)
@@ -1171,6 +1576,11 @@
             finally
             {
                 clearTimeout(timeout);
+                if (library !== null)
+                {
+                    libraryBusy = false;
+                    libraryButtons();
+                }
                 if (clock !== null)
                 {
                     rtcBusy = false;
@@ -1195,12 +1605,13 @@
                     enableLedButtons(true);
                 }
                 updateRunning = false;
-                const pending = pendingSpi.length > 0 || pendingRtc !== null || pendingLed !== null || pendingDiagnostics || pendingSave !== null;
+                const pending = pendingSpi.length > 0 || pendingRtc !== null || pendingLed !== null || pendingDiagnostics || pendingSave !== null || pendingLibrary !== null;
                 scheduleUpdate(pending ? 0 : 250);
             }
         }
         get('lang-en').addEventListener('click', () => applyLanguage('en'));
         get('lang-ru').addEventListener('click', () => applyLanguage('ru'));
+        get('lang-ja').addEventListener('click', () => applyLanguage('ja'));
         let savedLanguage = 'ru';
         try
         {

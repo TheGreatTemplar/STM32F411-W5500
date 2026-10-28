@@ -12,6 +12,8 @@ const browserStorage = new Map();
 let timerId = 0;
 let holdAdc = null;
 let holdSpi = null;
+let confirmAllowed = true;
+let pagedCatalog = false;
 let ledOn = false;
 let failCommand = false;
 let adcOk = true;
@@ -48,15 +50,16 @@ class TestDate extends Date
         return 30;
     }
 }
-const saved = {present: true, ready: true, busy: false, has_saved: true, save_ok: true,
+const saved = {present: true, ready: true, busy: false, scanning: false, scan: 64, id: 63, name: 'Default', has_saved: true, save_ok: true,
     error: 0, sequence: 7, settings: {mode: 3, hz: 20000000, lsb: 1, cs_high: 1, format: 'hex'},
     commands: ['9F 00 00 00', 'AA BB', '', '01 02']};
+const libraryRecords = new Map([[63, structuredClone(saved)]]);
 function createElement()
 {
     const element = {textContent: '', className: '', disabled: true, open: false, children: [], attributes: {},
         closest()
         {
-            return this.id === 'lang-en' || this.id === 'lang-ru';
+            return this.id === 'lang-en' || this.id === 'lang-ru' || this.id === 'lang-ja' || this.hasAttribute('data-user-text');
         },
         hasAttribute(name)
         {
@@ -111,6 +114,8 @@ function createElement()
 }
 const context = vm.createContext({
     Date: TestDate,
+    TextEncoder,
+    confirm: () => confirmAllowed,
     NodeFilter: {SHOW_TEXT: 4},
     localStorage:
     {
@@ -172,6 +177,57 @@ const context = vm.createContext({
     async fetch(url, options)
     {
         requests.push({url, options});
+        if (url === '/api/library')
+        {
+            if (!options.method || options.body.startsWith('list '))
+            {
+                const offset = options.method ? Number(options.body.trim().split(' ')[1]) : 0;
+                const sets = [...libraryRecords].map(([id, item]) => ({id, name: item.name}));
+                return {ok: true, json: async () => ({scanning: false, used: sets.length, blocked: 0,
+                    next: pagedCatalog && offset + 8 < 64 ? offset + 8 : null,
+                    sets: pagedCatalog ? sets.filter((item) => item.id >= offset && item.id < offset + 8) : sets})};
+            }
+            if (options.body.startsWith('save '))
+            {
+                const bytes = new TextEncoder().encode(options.body);
+                const first = bytes.indexOf(10);
+                const parts = options.body.slice(0, first).split(' ');
+                const name = new TextDecoder().decode(bytes.slice(first + 1, first + 1 + Number(parts[2])));
+                let id = Number(parts[1]);
+                if ([...libraryRecords].some(([key, item]) => key !== id && item.name === name))
+                {
+                    return {ok: false, json: async () => ({error: 12})};
+                }
+                if (id === 64)
+                {
+                    id = 0;
+                    while (libraryRecords.has(id))
+                    {
+                        ++id;
+                    }
+                }
+                Object.assign(saved, {id, name, has_saved: true});
+                libraryRecords.set(id, structuredClone(saved));
+                flashBusy = true;
+                return {ok: true, json: async () => ({...saved, busy: true})};
+            }
+            if (options.body.startsWith('load '))
+            {
+                Object.assign(saved, structuredClone(libraryRecords.get(Number(options.body.trim().split(' ')[1]))));
+            }
+            if (options.body.startsWith('delete '))
+            {
+                const id = Number(options.body.trim().split(' ')[1]);
+                libraryRecords.delete(id);
+                if (saved.id === id)
+                {
+                    Object.assign(saved, {id: 64, name: '', has_saved: false});
+                }
+                flashBusy = true;
+                return {ok: true, json: async () => ({...saved, busy: true})};
+            }
+            return {ok: true, json: async () => saved};
+        }
         if (url === '/api/rtc')
         {
             assert.equal(options.method, 'POST');
@@ -252,6 +308,7 @@ async function test()
     assert.equal(elements.get('spi-mode-description').textContent, 'CPOL=1 · CPHA=1');
     assert.equal(elements.get('spi-lsb').checked, true);
     assert.equal(elements.get('spi-cs-high').checked, true);
+    await vm.runInContext('update()', context); // Initial library catalog.
     await vm.runInContext('update()', context);
     assert.equal(elements.get('led-state').textContent, 'Выключен');
     assert.equal(elements.get('led-on').disabled, false);
@@ -365,7 +422,8 @@ async function test()
     const spiCount = requests.filter((r) => r.url === '/api/spi').length;
     elements.get('store-save').click();
     await vm.runInContext('update()', context);
-    assert.equal(requests.at(-1).url, '/api/commands');
+    assert.equal(requests.at(-1).url, '/api/library');
+    assert.match(requests.at(-1).options.body, /^save 63 7\nDefault\n/);
     assert.match(requests.at(-1).options.body, /lengths=5,5,0,5\n9F 00AA BB01 02$/);
     assert.equal(elements.get('store-save').disabled, true);
     vm.runInContext('nextStorePoll = 0', context);
@@ -531,6 +589,13 @@ async function test()
     assert.equal(elements.get('spi-send-0').textContent, 'Передать');
     assert.match(elements.get('spi-message-0').textContent, /передано 4 байт/);
     assert.equal(context.document.title, 'Монитор STM32F411');
+    elements.get('lang-ja').click();
+    assert.equal(context.document.documentElement.lang, 'ja');
+    assert.equal(context.document.title, 'STM32F411 モニター');
+    assert.equal(elements.get('spi-send-0').textContent, '送信');
+    assert.match(elements.get('spi-message-0').textContent, /送信済み/);
+    assert.equal(elements.get('library-select').children[1].textContent, 'Default');
+    elements.get('lang-ru').click();
     context.localStorage = {setItem()
     {
         throw new Error('Storage blocked');
@@ -538,7 +603,53 @@ async function test()
     elements.get('lang-en').click();
     assert.equal(elements.get('spi-send-0').textContent, 'Send');
     elements.get('lang-ru').click();
-    console.log('Web UI: RU/EN/persistence/blocked storage, preserved queue and commands, strict HEX, dispatch/timing, RTC/Flash/ADC/LED passed');
+    pagedCatalog = true;
+    elements.get('library-name').value = '日'.repeat(32);
+    elements.get('library-name').input();
+    elements.get('library-new').click();
+    await vm.runInContext('update()', context);
+    assert.match(requests.at(-1).options.body, /^save 64 96\n/);
+    vm.runInContext('nextStorePoll = 0', context);
+    await vm.runInContext('update()', context);
+    for (let i = 0; i < 8; ++i)
+    {
+        await vm.runInContext('update()', context);
+    }
+    assert.equal(elements.get('library-select').children.length, 3);
+    assert.equal(elements.get('library-select').value, '0');
+    elements.get('library-new').click();
+    await vm.runInContext('update()', context);
+    assert.match(elements.get('store-status').textContent, /Такое имя уже существует/);
+    assert.equal(vm.runInContext('storeWaiting', context), false);
+    const beforeLongName = requests.length;
+    elements.get('library-name').value = '日'.repeat(33);
+    elements.get('library-name').input();
+    elements.get('library-new').click();
+    assert.equal(requests.length, beforeLongName);
+    elements.get('library-select').value = '63';
+    elements.get('library-select').change();
+    confirmAllowed = false;
+    elements.get('library-load').click();
+    assert.equal(vm.runInContext('pendingLibrary', context), null);
+    confirmAllowed = true;
+    const beforeLoadSpi = requests.filter((r) => r.url === '/api/spi').length;
+    elements.get('library-load').click();
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('library-name').value, 'Default');
+    assert.equal(elements.get('spi-command-0').value, '9F 00 00 00');
+    assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeLoadSpi);
+    elements.get('library-select').value = '0';
+    elements.get('library-delete').click();
+    await vm.runInContext('update()', context);
+    vm.runInContext('nextStorePoll = 0', context);
+    await vm.runInContext('update()', context);
+    for (let i = 0; i < 8; ++i)
+    {
+        await vm.runInContext('update()', context);
+    }
+    assert.equal(libraryRecords.has(0), false);
+    assert.equal(elements.get('library-select').value, '63');
+    console.log('Web UI: RU/EN/JA, named Flash library, Unicode names, load/delete, preserved queue, strict HEX, RTC/ADC/LED passed');
 }
 
 test().catch((error) =>

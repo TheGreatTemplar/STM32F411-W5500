@@ -31,6 +31,39 @@ static uint32_t led_writes;
 static bool fail_diagnostics;
 static uint32_t save_calls;
 static uint32_t rtc_writes;
+static uint32_t library_loads;
+static uint32_t library_deletes;
+static bool library_name_ok;
+
+store_error_t command_library_load(uint32_t id)
+{
+    ++library_loads;
+    return id < 64U ? STORE_OK : STORE_NOT_FOUND;
+}
+
+store_error_t command_library_save(uint32_t id, const char *name, size_t name_size,
+                                   const char *body, size_t size)
+{
+    library_name_ok = id == 64U && name_size == 6U && memcmp(name, "日本", 6U) == 0;
+    return command_store_save(body, size);
+}
+
+store_error_t command_library_delete(uint32_t id)
+{
+    ++library_deletes;
+    return id < 64U ? STORE_OK : STORE_NOT_FOUND;
+}
+
+size_t command_library_json(char *json, size_t capacity, uint32_t offset)
+{
+    (void)offset;
+    if (capacity < 12U)
+    {
+        return 0U;
+    }
+    strcpy(json, "{\"sets\":[]}");
+    return strlen(json);
+}
 
 uint32_t board_spi_console_duration_us(void);
 uint32_t board_spi_console_duration_us(void)
@@ -230,7 +263,7 @@ int32_t w5500_send_poll(uint8_t socket)
 static void pump(const adc_snapshot_t *adc)
 {
     uint32_t i;
-    for (i = 0U; i < 100U; ++i)
+    for (i = 0U; i < 256U; ++i)
     {
         http_poll(adc);
         if ((state[0] == 0x18U) || (state[0] == W5500_CLOSED))
@@ -496,6 +529,38 @@ int test_entry(void)
     prepare("POST /api/rtc HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 3\r\n\r\nbad");
     pump(&adc);
     CHECK(strstr(output, "400 Bad Request") != NULL && rtc_writes == 1U && framing_ok());
+
+    prepare("GET /api/library HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "\"sets\":[]") != NULL && framing_ok());
+    prepare(
+        "POST /api/library HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 8\r\n\r\nload 31\n");
+    fragment_size = 1U;
+    for (i = 0U; i + 1U < input_size; ++i)
+    {
+        http_poll(&adc);
+        CHECK(library_loads == 0U);
+    }
+    pump(&adc);
+    CHECK(library_loads == 1U && framing_ok());
+    prepare(
+        "POST /api/library HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 9\r\n\r\nload 31\nx");
+    pump(&adc);
+    CHECK(strstr(output, "\"error\":5") != NULL && library_loads == 1U && framing_ok());
+    prepare("POST /api/library HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 10\r\n\r\ndelete "
+            "31\n");
+    pump(&adc);
+    CHECK(library_deletes == 1U && strstr(output, "202 Accepted") != NULL && framing_ok());
+    prepare("GET /api/library HTTP/1.1\r\n\r\n");
+    {
+        const char body[] = "save 64 6\n日本\n1234";
+        input_size = (size_t)snprintf(
+            input, sizeof(input),
+            "POST /api/library HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
+            (unsigned long)(sizeof(body) - 1U), body);
+    }
+    pump(&adc);
+    CHECK(library_name_ok && strstr(output, "202 Accepted") != NULL && framing_ok());
 
     prepare("GET / HTTP/1.1\r\n"); /* Socket 0 holds an incomplete request. */
     strcpy(secondary_input[0], "GET /api/adc HTTP/1.1\r\n\r\n");

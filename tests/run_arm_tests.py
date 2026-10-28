@@ -17,7 +17,7 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_AR
 def load_image(path):
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     uc.mem_map(0x08000000, 0x80000)
-    uc.mem_map(0x20000000, 0x40000 if path.name == "http_test.axf" else 0x20000)
+    uc.mem_map(0x20000000, 0x100000 if path.name == "store_test.axf" else (0x40000 if path.name == "http_test.axf" else 0x20000))
     uc.mem_map(0x10000000, 0x1000)
     with path.open("rb") as source:
         elf = ELFFile(source)
@@ -26,14 +26,14 @@ def load_image(path):
                 uc.mem_write(segment["p_vaddr"], segment.data())
         symbols = {symbol.name: symbol["st_value"]
                    for symbol in elf.get_section_by_name(".symtab").iter_symbols()}
-    uc.reg_write(UC_ARM_REG_SP, 0x2003F000 if path.name == "http_test.axf" else 0x2001F000)
+    uc.reg_write(UC_ARM_REG_SP, 0x200FF000 if path.name == "store_test.axf" else (0x2003F000 if path.name == "http_test.axf" else 0x2001F000))
     uc.reg_write(UC_ARM_REG_LR, 0x10000001)
     return uc, symbols
 
 
-def call(uc, address):
+def call(uc, address, timeout=5000000, count=20000000):
     uc.reg_write(UC_ARM_REG_LR, 0x10000001)
-    uc.emu_start(address | 1, 0x10000000, timeout=5000000, count=20000000)
+    uc.emu_start(address | 1, 0x10000000, timeout=timeout, count=count)
     assert uc.reg_read(UC_ARM_REG_PC) == 0x10000000, 'ARM call did not return within the execution limit'
     return uc.reg_read(UC_ARM_REG_R0)
 
@@ -78,6 +78,8 @@ requests = [
     (b"GET /api/diagnosticsX HTTP/1.1\r\n\r\n", 3),
     (b"POST /api/diagnostics HTTP/1.1\r\n\r\n", 5),
     (b"GET /api/commands HTTP/1.1\r\n\r\n", 11),
+    (b"GET /api/library HTTP/1.1\r\n\r\n", 15),
+    (spi_request.replace(b"/api/spi", b"/api/library"), 16),
     (b"GET /api/rtc HTTP/1.1\r\n\r\n", 13),
     (spi_request.replace(b"/api/spi", b"/api/rtc"), 14),
     (spi_request.replace(b"/api/spi", b"/api/commands"), 12),
@@ -95,7 +97,7 @@ for request, expected in requests:
     assert result == expected, (request, result, expected)
     count += 1
 for request, route in requests:
-    if route not in {1, 2, 6, 7, 9, 10, 11, 12, 13, 14}:
+    if route not in {1, 2, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16}:
         continue
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
@@ -221,9 +223,9 @@ assert result == 0, f"HTTP integration mock failed at C source line {result}"
 print("HTTP integration: four clients, stalled connection isolation, ADC/LED/SPI and response framing passed")
 
 uc, symbols = load_image(root / "build/store_test.axf")
-result = call(uc, symbols["test_entry"])
+result = call(uc, symbols["test_entry"], timeout=60000000, count=500000000)
 assert result == 0, f"Flash journal mock failed at C source line {result}"
-print("W25Q64JV: four slots, erase/page boundaries, reboot, interrupted write, CRC fallback and foreign-data protection passed")
+print("W25Q64JV: 64 named sets, UTF-8, full catalog, v1 migration, delete/reuse, interrupted writes, CRC and foreign-data protection passed")
 
 # Run the real calendar parser and RTC register code, without a ticking oscillator.
 import json

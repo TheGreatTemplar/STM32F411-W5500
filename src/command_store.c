@@ -5,7 +5,7 @@
 
 #define FLASH_BYTES 8388608UL
 #define SECTOR_BYTES 4096UL
-#define STORE_BASE (FLASH_BYTES - 2UL * SECTOR_BYTES)
+#define STORE_BASE (FLASH_BYTES - COMMAND_LIBRARY_SLOTS * 2UL * SECTOR_BYTES)
 #define STORE_MAGIC 0x34444D43UL
 #define STORE_COMMIT 0xA55AC33CUL
 
@@ -24,7 +24,30 @@ typedef struct
     uint32_t ascii;
     uint32_t lengths[COMMAND_STORE_COUNT];
     char texts[COMMAND_STORE_COUNT][COMMAND_STORE_TEXT_MAX];
+    uint32_t deleted;
+    uint32_t name_size;
+    char name[COMMAND_LIBRARY_NAME_BYTES];
 } store_record_t;
+
+#define LEGACY_BYTES offsetof(store_record_t, deleted)
+
+typedef struct
+{
+    uint32_t sequence;
+    uint32_t copy;
+    uint32_t kind; /* 0 free, 1 live, 2 deleted, 3 foreign/damaged */
+    uint32_t name_size;
+    char name[COMMAND_LIBRARY_NAME_BYTES];
+} library_entry_t;
+
+static library_entry_t catalog[COMMAND_LIBRARY_SLOTS];
+static bool scanning;
+static uint32_t scan_sector;
+static size_t scan_offset;
+static bool scan_blank;
+static uint32_t generation;
+static uint32_t selected_id;
+static uint32_t target_id;
 
 typedef char record_must_fit_sector[(sizeof(store_record_t) < SECTOR_BYTES) ? 1 : -1];
 
@@ -47,7 +70,6 @@ static bool present;
 static bool ready;
 static bool has_saved;
 static bool save_ok;
-static uint32_t active_sector;
 static store_error_t last_error;
 static store_job_t job;
 static uint32_t target_address;
@@ -71,7 +93,7 @@ static uint32_t record_crc(const store_record_t *record)
     const uint8_t *bytes = (const uint8_t *)record;
     uint32_t crc = UINT32_MAX;
     size_t i;
-    for (i = 0U; i < sizeof(*record); ++i)
+    for (i = 0U; i < (record->version == 1U ? LEGACY_BYTES : sizeof(*record)); ++i)
     {
         if ((i < 16U) || (i >= 24U))
         {
@@ -106,14 +128,98 @@ static bool write_enable(void)
     return flash_command(0x06U) && status(&value) && ((value & 3U) == 2U);
 }
 
+bool command_library_name_valid(const char *name, size_t size)
+{
+    size_t i = 0U;
+    uint32_t count = 0U;
+    if (size == 0U || size > COMMAND_LIBRARY_NAME_BYTES || name[0] == ' ' ||
+        name[size - 1U] == ' ' || (size == 1U && name[0] == '.') ||
+        (size == 2U && name[0] == '.' && name[1] == '.'))
+    {
+        return false;
+    }
+    while (i < size)
+    {
+        uint32_t code;
+        uint32_t minimum;
+        uint32_t tail;
+        const uint8_t first = (uint8_t)name[i++];
+        if (first < 0x80U)
+        {
+            code = first;
+            minimum = 0U;
+            tail = 0U;
+        }
+        else if (first >= 0xC2U && first <= 0xDFU)
+        {
+            code = first & 31U;
+            minimum = 0x80U;
+            tail = 1U;
+        }
+        else if (first >= 0xE0U && first <= 0xEFU)
+        {
+            code = first & 15U;
+            minimum = 0x800U;
+            tail = 2U;
+        }
+        else if (first >= 0xF0U && first <= 0xF4U)
+        {
+            code = first & 7U;
+            minimum = 0x10000U;
+            tail = 3U;
+        }
+        else
+        {
+            return false;
+        }
+        while (tail-- != 0U)
+        {
+            uint8_t next;
+            if (i == size)
+            {
+                return false;
+            }
+            next = (uint8_t)name[i++];
+            if ((next & 0xC0U) != 0x80U)
+            {
+                return false;
+            }
+            code = (code << 6U) | (next & 63U);
+        }
+        if (code < minimum || code > 0x10FFFFU || (code >= 0xD800U && code <= 0xDFFFU) ||
+            code < 32U || (code >= 127U && code <= 159U) || code == '/' || code == '\\' ||
+            ++count > 32U)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool newer(uint32_t a, uint32_t b)
+{
+    return a != b && (uint32_t)(a - b) < 0x80000000UL;
+}
+
+static uint32_t slot_address(uint32_t id, uint32_t copy)
+{
+    return STORE_BASE + (id * 2U + copy) * SECTOR_BYTES;
+}
+
 static bool valid_record(const store_record_t *record)
 {
     uint32_t i;
     spi_clock_plan_t plan;
-    if ((record->magic != STORE_MAGIC) || (record->version != 1U) ||
-        (record->commit != STORE_COMMIT) || (record->payload_size != sizeof(*record) - 24U) ||
+    if ((record->magic != STORE_MAGIC) || ((record->version != 1U) && (record->version != 2U)) ||
+        (record->commit != STORE_COMMIT) ||
+        (record->payload_size != (record->version == 1U ? LEGACY_BYTES : sizeof(*record)) - 24U) ||
         (record->crc != record_crc(record)) || (record->mode > 3U) || (record->lsb > 1U) ||
         (record->cs_high > 1U) || (record->ascii > 1U) || !spi_clock_plan(record->hz, &plan))
+    {
+        return false;
+    }
+    if (record->version == 2U &&
+        (record->deleted > 1U || !command_library_name_valid(record->name, record->name_size)))
     {
         return false;
     }
@@ -133,26 +239,113 @@ static bool supported_flash(void)
            (jedec[2] == 0x17U);
 }
 
-static store_error_t blank_region_status(void)
+static void defaults(void)
+{
+    memset(&current, 0, sizeof(current));
+    current.hz = 1000000U;
+    selected_id = COMMAND_LIBRARY_SLOTS;
+    has_saved = false;
+}
+
+static void scan_step(void)
 {
     uint8_t bytes[256];
-    uint32_t address;
+    const uint32_t id = scan_sector / 2U;
+    const uint32_t copy = scan_sector % 2U;
+    library_entry_t *entry = &catalog[id];
     size_t i;
-    for (address = STORE_BASE; address < FLASH_BYTES; address += sizeof(bytes))
+    size_t count;
+    if (scan_offset == 0U)
     {
-        if (!addressed(0x03U, address, NULL, bytes, sizeof(bytes)))
+        memset(&candidate, 0xFF, sizeof(candidate));
+        scan_blank = true;
+    }
+    if (!addressed(0x03U, STORE_BASE + scan_sector * SECTOR_BYTES + scan_offset, NULL, bytes,
+                   sizeof(bytes)))
+    {
+        scanning = false;
+        last_error = STORE_IO;
+        return;
+    }
+    for (i = 0U; i < sizeof(bytes); ++i)
+    {
+        scan_blank = scan_blank && bytes[i] == 0xFFU;
+    }
+    if (scan_offset < sizeof(candidate))
+    {
+        count = sizeof(candidate) - scan_offset;
+        if (count > sizeof(bytes))
         {
-            return STORE_IO;
+            count = sizeof(bytes);
         }
-        for (i = 0U; i < sizeof(bytes); ++i)
+        memcpy((uint8_t *)&candidate + scan_offset, bytes, count);
+    }
+    scan_offset += sizeof(bytes);
+    if (scan_offset < SECTOR_BYTES)
+    {
+        return;
+    }
+    if ((candidate.version == 2U || id == COMMAND_LIBRARY_SLOTS - 1U) && valid_record(&candidate))
+    {
+        if (candidate.version == 1U)
         {
-            if (bytes[i] != 0xFFU)
-            {
-                return STORE_FOREIGN_DATA;
-            }
+            candidate.deleted = 0U;
+            candidate.name_size = 7U;
+            memcpy(candidate.name, "Default", 7U);
+        }
+        if (entry->kind == 0U || entry->kind == 3U || newer(candidate.sequence, entry->sequence))
+        {
+            entry->kind = candidate.deleted != 0U ? 2U : 1U;
+            entry->copy = copy;
+            entry->sequence = candidate.sequence;
+            entry->name_size = candidate.name_size;
+            memcpy(entry->name, candidate.name, candidate.name_size);
+        }
+        if (newer(candidate.sequence, generation))
+        {
+            generation = candidate.sequence;
+        }
+        if (candidate.deleted == 0U && (!has_saved || newer(candidate.sequence, current.sequence)))
+        {
+            current = candidate;
+            selected_id = id;
+            has_saved = true;
         }
     }
-    return STORE_OK;
+    else if (!scan_blank && entry->kind == 0U)
+    {
+        entry->kind = 3U;
+    }
+    ++scan_sector;
+    scan_offset = 0U;
+    if (copy == 1U && has_saved && selected_id == id && entry->kind == 2U)
+    {
+        defaults(); /* The newer tombstone hides the old live copy. */
+    }
+    if (scan_sector == COMMAND_LIBRARY_SLOTS * 2U)
+    {
+        uint32_t latest = COMMAND_LIBRARY_SLOTS;
+        for (i = 0U; i < COMMAND_LIBRARY_SLOTS; ++i)
+        {
+            if (catalog[i].kind == 1U && (latest == COMMAND_LIBRARY_SLOTS ||
+                                          newer(catalog[i].sequence, catalog[latest].sequence)))
+            {
+                latest = (uint32_t)i;
+            }
+        }
+        scanning = false;
+        ready = true;
+        last_error = STORE_OK;
+        if (latest != COMMAND_LIBRARY_SLOTS)
+        {
+            last_error = command_library_load(latest);
+        }
+        else
+        {
+            defaults();
+        }
+        save_ok = has_saved;
+    }
 }
 
 void command_store_init(void)
@@ -160,16 +353,18 @@ void command_store_init(void)
     const uint8_t read_id = 0x9FU;
     uint8_t value;
     uint32_t start;
-    bool a_valid;
-    bool b_valid;
-    memset(&current, 0, sizeof(current));
-    current.hz = 1000000U;
+
+    defaults();
+    memset(catalog, 0, sizeof(catalog));
+    scanning = false;
+    generation = 0U;
+    scan_sector = 0U;
+    scan_offset = 0U;
     memset(jedec, 0, sizeof(jedec));
     present = false;
     ready = false;
     has_saved = false;
     save_ok = false;
-    active_sector = 0U;
     job = JOB_IDLE;
     last_error = STORE_NO_FLASH;
     if (!flash_command(0xABU))
@@ -211,31 +406,8 @@ void command_store_init(void)
         last_error = STORE_TIMEOUT;
         return;
     }
-    if (!addressed(0x03U, STORE_BASE, NULL, (uint8_t *)&current, sizeof(current)) ||
-        !addressed(0x03U, STORE_BASE + SECTOR_BYTES, NULL, (uint8_t *)&candidate,
-                   sizeof(candidate)))
-    {
-        last_error = STORE_IO;
-        return;
-    }
-    a_valid = valid_record(&current);
-    b_valid = valid_record(&candidate);
-    if (b_valid &&
-        (!a_valid || ((candidate.sequence != current.sequence) &&
-                      ((uint32_t)(candidate.sequence - current.sequence) < 0x80000000UL))))
-    {
-        current = candidate;
-        active_sector = 1U;
-    }
-    has_saved = a_valid || b_valid;
-    last_error = has_saved ? STORE_OK : blank_region_status();
-    ready = last_error == STORE_OK;
-    if (!has_saved)
-    {
-        memset(&current, 0, sizeof(current));
-        current.hz = 1000000U;
-    }
-    save_ok = has_saved;
+    scanning = true;
+    last_error = STORE_OK;
 }
 
 static bool parse_snapshot(const char *body, size_t size)
@@ -311,9 +483,9 @@ static bool parse_snapshot(const char *body, size_t size)
     return offset == size;
 }
 
-store_error_t command_store_save(const char *body, size_t size)
+static store_error_t available(void)
 {
-    if (job != JOB_IDLE)
+    if (job != JOB_IDLE || scanning)
     {
         return STORE_BUSY;
     }
@@ -321,26 +493,147 @@ store_error_t command_store_save(const char *body, size_t size)
     {
         return STORE_NO_FLASH;
     }
-    if (!ready)
-    {
-        return last_error;
-    }
-    if (!parse_snapshot(body, size))
-    {
-        return STORE_INVALID;
-    }
+    return ready ? STORE_OK : last_error;
+}
+
+static void begin_write(uint32_t id)
+{
     candidate.magic = STORE_MAGIC;
-    candidate.version = 1U;
-    candidate.sequence = has_saved ? current.sequence + 1U : 1U;
+    candidate.version = 2U;
+    candidate.sequence = generation + 1U;
     candidate.payload_size = sizeof(candidate) - 24U;
     candidate.commit = UINT32_MAX;
     candidate.crc = record_crc(&candidate);
-    target_address = STORE_BASE + (has_saved ? (1U - active_sector) * SECTOR_BYTES : 0U);
+    target_id = id;
+    target_address = slot_address(id, catalog[id].kind == 0U ? 0U : 1U - catalog[id].copy);
     position = 0U;
     last_error = STORE_OK;
     save_ok = false;
     operation_start = board_millis();
     job = JOB_ERASE;
+}
+
+store_error_t command_library_load(uint32_t id)
+{
+    const store_error_t error = available();
+    if (error != STORE_OK)
+    {
+        return error;
+    }
+    if (id >= COMMAND_LIBRARY_SLOTS || catalog[id].kind != 1U)
+    {
+        return STORE_NOT_FOUND;
+    }
+    if (!addressed(0x03U, slot_address(id, catalog[id].copy), NULL, (uint8_t *)&candidate,
+                   sizeof(candidate)))
+    {
+        return STORE_IO;
+    }
+    if (!valid_record(&candidate))
+    {
+        return STORE_VERIFY;
+    }
+    if (candidate.version == 1U)
+    {
+        candidate.deleted = 0U;
+        candidate.name_size = 7U;
+        memcpy(candidate.name, "Default", 7U);
+    }
+    current = candidate;
+    selected_id = id;
+    has_saved = true;
+    last_error = STORE_OK;
+    return STORE_OK;
+}
+
+store_error_t command_library_save(uint32_t id, const char *name, size_t name_size,
+                                   const char *body, size_t size)
+{
+    const store_error_t error = available();
+    uint32_t i;
+    if (error != STORE_OK)
+    {
+        return error;
+    }
+    if (!command_library_name_valid(name, name_size))
+    {
+        return STORE_NAME;
+    }
+    if (id > COMMAND_LIBRARY_SLOTS)
+    {
+        return STORE_NOT_FOUND;
+    }
+    if (id < COMMAND_LIBRARY_SLOTS && catalog[id].kind == 3U)
+    {
+        return STORE_FOREIGN_DATA;
+    }
+    for (i = 0U; i < COMMAND_LIBRARY_SLOTS; ++i)
+    {
+        if (i != id && catalog[i].kind == 1U && catalog[i].name_size == name_size &&
+            memcmp(catalog[i].name, name, name_size) == 0)
+        {
+            return STORE_EXISTS;
+        }
+    }
+    if (id == COMMAND_LIBRARY_SLOTS)
+    {
+        for (id = 0U; id < COMMAND_LIBRARY_SLOTS; ++id)
+        {
+            if (catalog[id].kind == 0U || catalog[id].kind == 2U)
+            {
+                break;
+            }
+        }
+        if (id == COMMAND_LIBRARY_SLOTS)
+        {
+            return STORE_FULL;
+        }
+    }
+    if (!parse_snapshot(body, size))
+    {
+        return STORE_INVALID;
+    }
+    candidate.name_size = (uint32_t)name_size;
+    memcpy(candidate.name, name, name_size);
+    begin_write(id);
+    return STORE_OK;
+}
+
+store_error_t command_store_save(const char *body, size_t size)
+{
+    const uint32_t id = has_saved ? selected_id : COMMAND_LIBRARY_SLOTS - 1U;
+    const char *name = has_saved ? current.name : "Default";
+    const size_t name_size = has_saved ? current.name_size : 7U;
+    return command_library_save(id, name, name_size, body, size);
+}
+
+store_error_t command_library_delete(uint32_t id)
+{
+    const store_error_t error = available();
+    if (error != STORE_OK)
+    {
+        return error;
+    }
+    if (id >= COMMAND_LIBRARY_SLOTS || catalog[id].kind != 1U)
+    {
+        return STORE_NOT_FOUND;
+    }
+    if (!addressed(0x03U, slot_address(id, catalog[id].copy), NULL, (uint8_t *)&candidate,
+                   sizeof(candidate)))
+    {
+        return STORE_IO;
+    }
+    if (!valid_record(&candidate))
+    {
+        return STORE_VERIFY;
+    }
+    if (candidate.version == 1U)
+    {
+        candidate.name_size = 7U;
+        memcpy(candidate.name, "Default", 7U);
+    }
+    candidate.deleted = 1U;
+    begin_write(id);
     return STORE_OK;
 }
 
@@ -355,6 +648,11 @@ void command_store_poll(void)
 {
     uint8_t value;
     uint8_t bytes[256];
+    if (scanning)
+    {
+        scan_step();
+        return;
+    }
     if (job == JOB_IDLE)
     {
         return;
@@ -452,6 +750,7 @@ void command_store_poll(void)
     case JOB_COMMIT_WAIT:
     {
         uint32_t commit = 0U;
+        library_entry_t *entry = &catalog[target_id];
         if (!addressed(0x03U, target_address + 20U, NULL, (uint8_t *)&commit, sizeof(commit)) ||
             (commit != STORE_COMMIT))
         {
@@ -459,9 +758,25 @@ void command_store_poll(void)
             return;
         }
         candidate.commit = STORE_COMMIT;
-        current = candidate;
-        active_sector = (target_address - STORE_BASE) / SECTOR_BYTES;
-        has_saved = true;
+        entry->kind = candidate.deleted != 0U ? 2U : 1U;
+        entry->sequence = candidate.sequence;
+        entry->copy = (target_address - slot_address(target_id, 0U)) / SECTOR_BYTES;
+        entry->name_size = candidate.name_size;
+        memcpy(entry->name, candidate.name, candidate.name_size);
+        generation = candidate.sequence;
+        if (candidate.deleted != 0U)
+        {
+            if (has_saved && selected_id == target_id)
+            {
+                defaults();
+            }
+        }
+        else
+        {
+            current = candidate;
+            selected_id = target_id;
+            has_saved = true;
+        }
         save_ok = true;
         last_error = STORE_OK;
         job = JOB_IDLE;
@@ -545,7 +860,15 @@ size_t command_store_json(char *json, size_t capacity)
     static const char hex[] = "0123456789ABCDEF";
     json_writer_t writer = {json, capacity, 0U, 1U};
     uint32_t i;
-    put_text(&writer, "{\"present\":");
+    put_text(&writer, "{\"scanning\":");
+    put_text(&writer, scanning ? "true" : "false");
+    put_text(&writer, ",\"scan\":");
+    put_uint(&writer, scan_sector / 2U);
+    put_text(&writer, ",\"id\":");
+    put_uint(&writer, has_saved ? selected_id : COMMAND_LIBRARY_SLOTS);
+    put_text(&writer, ",\"name\":");
+    put_string(&writer, has_saved ? current.name : "", has_saved ? current.name_size : 0U);
+    put_text(&writer, ",\"present\":");
     put_text(&writer, present ? "true" : "false");
     put_text(&writer, ",\"ready\":");
     put_text(&writer, ready ? "true" : "false");
@@ -587,6 +910,71 @@ size_t command_store_json(char *json, size_t capacity)
             put_char(&writer, ',');
         }
         put_string(&writer, current.texts[i], current.lengths[i]);
+    }
+    put_text(&writer, "]}");
+    if (writer.ok == 0U || writer.used >= capacity)
+    {
+        return 0U;
+    }
+    json[writer.used] = '\0';
+    return writer.used;
+}
+
+size_t command_library_json(char *json, size_t capacity, uint32_t offset)
+{
+    json_writer_t writer = {json, capacity, 0U, 1U};
+    uint32_t i;
+    uint32_t used = 0U;
+    uint32_t blocked = 0U;
+    uint32_t count = 0U;
+    uint32_t end = offset + 8U;
+    if (offset >= COMMAND_LIBRARY_SLOTS)
+    {
+        return 0U;
+    }
+    if (end > COMMAND_LIBRARY_SLOTS)
+    {
+        end = COMMAND_LIBRARY_SLOTS;
+    }
+    for (i = 0U; i < COMMAND_LIBRARY_SLOTS; ++i)
+    {
+        used += catalog[i].kind == 1U ? 1U : 0U;
+        blocked += catalog[i].kind == 3U ? 1U : 0U;
+    }
+    put_text(&writer, "{\"scanning\":");
+    put_text(&writer, scanning ? "true" : "false");
+    put_text(&writer, ",\"used\":");
+    put_uint(&writer, used);
+    put_text(&writer, ",\"blocked\":");
+    put_uint(&writer, blocked);
+    put_text(&writer, ",\"next\":");
+    if (end == COMMAND_LIBRARY_SLOTS)
+    {
+        put_text(&writer, "null");
+    }
+    else
+    {
+        put_uint(&writer, end);
+    }
+    put_text(&writer, ",\"sets\":[");
+    if (!scanning)
+    {
+        for (i = offset; i < end; ++i)
+        {
+            if (catalog[i].kind != 1U)
+            {
+                continue;
+            }
+            if (count++ != 0U)
+            {
+                put_char(&writer, ',');
+            }
+            put_text(&writer, "{\"id\":");
+            put_uint(&writer, i);
+            put_text(&writer, ",\"name\":");
+            put_string(&writer, catalog[i].name, catalog[i].name_size);
+            put_char(&writer, '}');
+        }
     }
     put_text(&writer, "]}");
     if (writer.ok == 0U || writer.used >= capacity)
