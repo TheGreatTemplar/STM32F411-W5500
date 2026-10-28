@@ -38,6 +38,16 @@
         button:hover { filter: brightness(1.15); }
         button:disabled { opacity: 0.45; cursor: wait; }
         #led-message { font-size: 13px; min-height: 21px; margin: 12px 0 0; }
+        .rtc-control { margin-top: 20px; padding: 20.4px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
+        .rtc-header, .rtc-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+        .rtc-header { justify-content: space-between; }
+        .rtc-reading { display: flex; align-items: baseline; gap: 12px; font-variant-numeric: tabular-nums; }
+        #rtc-value { font-size: 26px; color: #6ed8c4; }
+        #rtc-date { color: #a6b7c7; }
+        .rtc-settings { margin-top: 12px; }
+        #rtc-message { font-size: 13px; margin: 8px 0 0; }
+        .rtc-control .hint { margin: 8px 0 0; }
+        input[type="date"], input[type="time"] { color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 6px 8.5px; font: inherit; min-width: 0; }
         .spi-control { margin-top: 20px; padding: 20.4px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
         .spi-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         .spi-title .hint { margin: 0; }
@@ -84,7 +94,7 @@
     <main>
         <header>
             <div><div class="eyebrow">BLACK PILL / W5500</div><h1>Аналоговые входы</h1></div>
-            <div class="toolbar"><div id="status" role="status">Подключение…</div><button type="button" id="diag-open">Диагностика</button></div>
+            <div class="toolbar"><div id="status" role="status">Подключение…</div><button type="button" id="diag-open">Диагностика W5500</button></div>
         </header>
         <section class="channels" aria-label="Каналы АЦП">
             <article>
@@ -105,6 +115,17 @@
             <div>Время работы<strong id="uptime">—</strong></div>
             <div>Измерений<strong id="samples">—</strong></div>
             <div>Опорное напряжение<strong id="vref">—</strong></div>
+        </section>
+        <section class="rtc-control" aria-label="Часы микроконтроллера">
+            <div class="rtc-header"><h2>Часы стенда · RTC / LSE</h2><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
+            <div class="rtc-settings">
+                <label>Дата<input type="date" id="rtc-input-date" min="2000-01-01" max="2099-12-31"></label>
+                <label>Время<input type="time" id="rtc-input-time" step="1"></label>
+                <button type="button" id="rtc-set" disabled>Установить</button>
+                <button type="button" id="rtc-sync" disabled>Синхронизировать с ПК</button>
+            </div>
+            <p id="rtc-message" role="status">Запуск LSE…</p>
+            <p class="hint">Можно задать произвольную дату 2000–2099. Синхронизация берёт местное время компьютера только по нажатию кнопки.</p>
         </section>
         <section class="led-control" aria-label="Управление светодиодом">
             <div class="led-header"><h2>Синий светодиод · PC13</h2><div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div><span id="led-state" role="status">Состояние: —</span></div>
@@ -168,7 +189,7 @@
         </footer>
     </main>
     <dialog id="diagnostics" aria-labelledby="diag-title">
-        <div class="led-header"><h2 id="diag-title">Диагностика стенда</h2><button type="button" id="diag-close">Закрыть</button></div>
+        <div class="led-header"><h2 id="diag-title">Диагностика W5500</h2><button type="button" id="diag-close">Закрыть</button></div>
         <p id="diag-message" role="status">Ожидание данных…</p>
         <h2>W5500 · сеть и контроллер</h2>
         <div class="diag-grid" id="diag-network"></div>
@@ -182,6 +203,11 @@
     </dialog>
     <script>
         const get = (id) => document.getElementById(id);
+        let pendingRtc = null;
+        let rtcBusy = false;
+        let rtcReady = false;
+        let rtcFormLoaded = false;
+        let rtcDraftDirty = false;
         let pendingLed = null;
         let ledBusy = false;
         let pendingDiagnostics = false;
@@ -195,6 +221,78 @@
         let flashReady = false;
         let draftDirty = false;
         let saveFingerprint = '';
+        function rtcButtons()
+        {
+            get('rtc-set').disabled = rtcBusy || !rtcReady;
+            get('rtc-sync').disabled = rtcBusy || !rtcReady;
+        }
+        function showRtc(data)
+        {
+            if (!data)
+            {
+                return;
+            }
+            rtcReady = data.ready;
+            rtcButtons();
+            get('rtc-value').textContent = data.set ? data.datetime.slice(11) : '—';
+            get('rtc-date').textContent = data.set ? data.datetime.slice(0, 10).split('-').reverse().join('.') : '—';
+            const errors = {1: 'RTC использует другой источник тактирования', 2: 'LSE не запустился: проверь кварц 32,768 кГц',
+                3: 'Тайм-аут установки RTC', 4: 'Несовместимая сохранённая конфигурация RTC', 5: 'Некорректные данные календаря RTC'};
+            if (!rtcBusy)
+            {
+                get('rtc-message').textContent = data.error ? (errors[data.error] || 'Ошибка RTC') :
+                    (!data.ready ? 'LSE ещё не готов…' : (data.set ? 'RTC · LSE 32,768 кГц' : 'Время не установлено'));
+            }
+            if (data.set && !rtcFormLoaded && !rtcDraftDirty)
+            {
+                get('rtc-input-date').value = data.datetime.slice(0, 10);
+                get('rtc-input-time').value = data.datetime.slice(11);
+                rtcFormLoaded = true;
+            }
+        }
+        function localComputerTime()
+        {
+            const now = new Date();
+            const pad = (number) => String(number).padStart(2, '0');
+            return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
+                'T' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+        }
+        function validRtcText(text)
+        {
+            if (!/^20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(text))
+            {
+                return false;
+            }
+            const date = new Date(text + 'Z');
+            return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 19) === text;
+        }
+        function queueRtc(sync)
+        {
+            if (rtcBusy || !rtcReady)
+            {
+                return;
+            }
+            const time = get('rtc-input-time').value || '';
+            const text = sync ? localComputerTime() : get('rtc-input-date').value + 'T' + time + (time.length === 5 ? ':00' : '');
+            if (!validRtcText(text))
+            {
+                get('rtc-message').textContent = 'Укажи существующую дату 2000–2099 и время 00:00:00–23:59:59.';
+                return;
+            }
+            pendingRtc = {sync, text};
+            rtcBusy = true;
+            rtcButtons();
+            get('rtc-message').textContent = 'Установка RTC…';
+        }
+        get('rtc-set').addEventListener('click', () => queueRtc(false));
+        get('rtc-sync').addEventListener('click', () => queueRtc(true));
+        for (const id of ['rtc-input-date', 'rtc-input-time'])
+        {
+            get(id).addEventListener('input', () =>
+            {
+                rtcDraftDirty = true;
+            });
+        }
         function spiMode()
         {
             for (let i = 0; i < 4; ++i)
@@ -490,20 +588,25 @@
         {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 1500);
-            const command = pendingLed;
-            pendingLed = null;
-            const spi = command === null ? pendingSpi : null;
+            const clock = pendingRtc;
+            pendingRtc = null;
+            const command = clock === null ? pendingLed : null;
+            if (command !== null)
+            {
+                pendingLed = null;
+            }
+            const spi = clock === null && command === null ? pendingSpi : null;
             if (spi !== null)
             {
                 pendingSpi = null;
             }
-            const diagnostics = command === null && spi === null && pendingDiagnostics;
-            const save = command === null && spi === null && !diagnostics ? pendingSave : null;
+            const diagnostics = clock === null && command === null && spi === null && pendingDiagnostics;
+            const save = clock === null && command === null && spi === null && !diagnostics ? pendingSave : null;
             if (save !== null)
             {
                 pendingSave = null;
             }
-            const storage = command === null && spi === null && !diagnostics && save === null &&
+            const storage = clock === null && command === null && spi === null && !diagnostics && save === null &&
                 (pendingStoreLoad || storeWaiting) && Date.now() >= nextStorePoll;
             const initialStore = storage && pendingStoreLoad;
             if (storage)
@@ -518,6 +621,24 @@
             let haveFreshState = false;
             try
             {
+                if (clock !== null)
+                {
+                    const text = clock.sync ? localComputerTime() : clock.text;
+                    const reply = await fetch('/api/rtc', {method: 'POST', headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'},
+                        body: text, signal: controller.signal});
+                    if (!reply.ok)
+                    {
+                        throw new Error('HTTP ' + reply.status);
+                    }
+                    const result = await reply.json();
+                    showRtc(result);
+                    if (!result.ready || !result.set || result.error)
+                    {
+                        throw new Error('RTC not confirmed');
+                    }
+                    get('rtc-message').textContent = clock.sync ? 'RTC синхронизирован с компьютером' : 'Время RTC установлено';
+                    return;
+                }
                 if (save !== null || storage)
                 {
                     const options = save !== null ? {method: 'POST',
@@ -576,6 +697,7 @@
                 }
                 const data = await response.json();
                 haveFreshState = true;
+                showRtc(data.rtc);
                 showLed(data.led_on);
                 if (!ledBusy)
                 {
@@ -602,6 +724,11 @@
             }
             catch (error)
             {
+                if (clock !== null)
+                {
+                    get('rtc-message').textContent = 'Нет подтверждения установки RTC. Проверь показания; автоматического повтора нет.';
+                    return;
+                }
                 if (save !== null || storage)
                 {
                     saveBusy = false;
@@ -626,6 +753,11 @@
                 clearReadings();
                 if (!error.message.startsWith('АЦП'))
                 {
+                    rtcReady = false;
+                    rtcButtons();
+                    get('rtc-value').textContent = '—';
+                    get('rtc-date').textContent = '—';
+                    get('rtc-message').textContent = 'Нет свежих данных RTC';
                     get('address').textContent = location.host + ' · —';
                     get('led-state').textContent = 'Состояние: —';
                     get('led-state').className = '';
@@ -641,6 +773,11 @@
             finally
             {
                 clearTimeout(timeout);
+                if (clock !== null)
+                {
+                    rtcBusy = false;
+                    rtcButtons();
+                }
                 if (spi !== null)
                 {
                     spiBusy = false;

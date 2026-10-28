@@ -2,6 +2,7 @@
 #include "command_store.h"
 #include "config.h"
 #include "http.h"
+#include "rtc.h"
 #include "w5500.h"
 
 int main(void)
@@ -11,6 +12,7 @@ int main(void)
     uint32_t last_retry;
     bool network_ready;
     board_init();
+    rtc_init();
     network_ready = w5500_init();
     command_store_init();
     last_retry = board_millis();
@@ -18,6 +20,7 @@ int main(void)
     for (;;)
     {
         const uint32_t now = board_millis();
+        rtc_poll();
         if ((uint32_t)(now - last_sample) >= APP_SAMPLE_PERIOD_MS)
         {
             uint16_t values[2];

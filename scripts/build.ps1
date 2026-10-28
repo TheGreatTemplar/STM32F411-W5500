@@ -13,7 +13,7 @@ try
     $assembler = Join-Path $Toolchain 'armasm.exe'
     $linker = Join-Path $Toolchain 'armlink.exe'
     $converter = Join-Path $Toolchain 'fromelf.exe'
-    $sources = @('board', 'w5500', 'spi_console', 'command_store', 'http_parse', 'http', 'main')
+    $sources = @('board', 'w5500', 'spi_console', 'command_store', 'rtc', 'http_parse', 'http', 'main')
     $objects = @()
     foreach ($source in $sources)
     {

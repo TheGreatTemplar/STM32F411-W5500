@@ -441,7 +441,17 @@
               <FilePath>.\src\spi_console.c</FilePath>
             </File>
             <File>
-              <FileName>command_store.c</FileName>
+                <FileName>rtc.c</FileName>
+                <FileType>1</FileType>
+                <FilePath>.\src\rtc.c</FilePath>
+              </File>
+              <File>
+                <FileName>rtc.h</FileName>
+                <FileType>5</FileType>
+                <FilePath>.\src\rtc.h</FilePath>
+              </File>
+              <File>
+                <FileName>command_store.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\src\command_store.c</FilePath>
             </File>

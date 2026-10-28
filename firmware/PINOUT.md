@@ -67,7 +67,7 @@ SPI1 mode 0, 1 МГц. Перед обращением к Flash CS W5500 на PA
 | ADC1_IN1 | PA1, 0…VDDA |
 | Аналоговый резерв | PA2, не занят |
 | Синий LED | PC13, active-low |
-| LSE | PC14 OSC32_IN / PC15 OSC32_OUT, GPIO не используются |
+| LSE / RTC | PC14 OSC32_IN / PC15 OSC32_OUT, кварц 32,768 кГц; GPIO не используются |
 | SWD | PA13 SWDIO / PA14 SWCLK |
 | Сброс MCU | NRST |
 

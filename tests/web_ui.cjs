@@ -14,6 +14,35 @@ let failDiagnostics = false;
 let failSpi = false;
 let failSpiTransport = false;
 let flashBusy = false;
+let failRtc = false;
+let rtcState = {ready: true, set: true, lse_ready: true, error: 0, datetime: '2032-02-29T12:34:56'};
+class TestDate extends Date
+{
+    getFullYear()
+    {
+        return 2026;
+    }
+    getMonth()
+    {
+        return 9;
+    }
+    getDate()
+    {
+        return 28;
+    }
+    getHours()
+    {
+        return 13;
+    }
+    getMinutes()
+    {
+        return 20;
+    }
+    getSeconds()
+    {
+        return 30;
+    }
+}
 const saved = {present: true, ready: true, busy: false, has_saved: true, save_ok: true,
     error: 0, sequence: 7, settings: {mode: 3, hz: 20000000, lsb: 1, cs_high: 1, format: 'hex'},
     commands: ['9F 00 00 00', 'AA BB', '', '01 02']};
@@ -48,6 +77,7 @@ function createElement()
         }};
 }
 const context = vm.createContext({
+    Date: TestDate,
     document:
     {
         getElementById(id)
@@ -69,6 +99,17 @@ const context = vm.createContext({
     async fetch(url, options)
     {
         requests.push({url, options});
+        if (url === '/api/rtc')
+        {
+            assert.equal(options.method, 'POST');
+            assert.equal(options.headers['X-Device-Control'], '1');
+            rtcState = {...rtcState, datetime: options.body, set: true};
+            if (failRtc)
+            {
+                throw new Error('Lost RTC reply');
+            }
+            return {ok: true, json: async () => rtcState};
+        }
         if (url === '/api/commands')
         {
             if (options.method === 'POST')
@@ -117,7 +158,7 @@ const context = vm.createContext({
         assert.equal(url, '/api/adc');
         return {ok: true, json: async () => ({raw: [0, 4095], mv: [0, 3300],
             adc_ok: adcOk, link: true, link_speed_mbps: 100, led_on: ledOn,
-            sample_count: 1, uptime_ms: 1000, vref_mv: 3300})};
+            sample_count: 1, uptime_ms: 1000, vref_mv: 3300, rtc: rtcState})};
     }
 });
 
@@ -134,6 +175,10 @@ async function test()
     assert.equal(elements.get('led-state').textContent, 'Выключен');
     assert.equal(elements.get('led-on').disabled, false);
     assert.equal(elements.get('address').textContent, '172.16.236.220:5025 · 100 Мбит/с');
+    assert.equal(elements.get('rtc-value').textContent, '12:34:56');
+    assert.equal(elements.get('rtc-date').textContent, '29.02.2032');
+    assert.equal(elements.get('rtc-input-date').value, '2032-02-29');
+    assert.equal(requests.filter((r) => r.url === '/api/rtc').length, 0);
 
     elements.get('led-on').click();
     assert.equal(elements.get('led-on').disabled, true);
@@ -269,7 +314,39 @@ async function test()
     assert.equal(enter('ff'.repeat(256)).length, 767);
     elements.get('spi-format').value = 'ascii';
     assert.equal(enter('aabb\n'), 'aabb\n');
-    console.log('Web UI: four command slots, independent RX, Flash restore/save, early edits, LED, diagnostics, SPI validation and no automatic SPI retry passed');
+    elements.get('rtc-input-date').value = '2025-02-29';
+    elements.get('rtc-input-time').value = '10:00:00';
+    elements.get('rtc-set').click();
+    assert.match(elements.get('rtc-message').textContent, /существующую дату/);
+    assert.equal(requests.filter((r) => r.url === '/api/rtc').length, 0);
+    elements.get('rtc-input-date').value = '2000-01-01';
+    elements.get('rtc-input-time').value = '00:00';
+    elements.get('rtc-input-date').input();
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('rtc-input-date').value, '2000-01-01');
+    elements.get('rtc-set').click();
+    assert.equal(elements.get('rtc-set').disabled, true);
+    await vm.runInContext('update()', context);
+    assert.equal(requests.at(-1).options.body, '2000-01-01T00:00:00');
+    assert.equal(elements.get('rtc-value').textContent, '00:00:00');
+    elements.get('rtc-sync').click();
+    await vm.runInContext('update()', context);
+    assert.equal(requests.at(-1).options.body, '2026-10-28T13:20:30');
+    assert.match(elements.get('rtc-message').textContent, /синхронизирован/);
+    failRtc = true;
+    elements.get('rtc-set').click();
+    await vm.runInContext('update()', context);
+    assert.match(elements.get('rtc-message').textContent, /Нет подтверждения/);
+    const rtcCount = requests.filter((r) => r.url === '/api/rtc').length;
+    await vm.runInContext('update()', context);
+    assert.equal(requests.filter((r) => r.url === '/api/rtc').length, rtcCount);
+    rtcState = {...rtcState, ready: false, set: false, error: 2};
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('rtc-value').textContent, '—');
+    assert.equal(elements.get('rtc-set').disabled, true);
+    assert.equal(elements.get('rtc-sync').disabled, true);
+    assert.match(elements.get('rtc-message').textContent, /LSE не запустился/);
+    console.log('Web UI: RTC manual/local-PC set, invalid date, no automatic sync/retry, LSE error, SPI/Flash/ADC/LED/diagnostics passed');
 }
 
 test().catch((error) =>

@@ -2,6 +2,7 @@
 #include "board.h"
 #include "command_store.h"
 #include "config.h"
+#include "rtc.h"
 #include "spi_console.h"
 #include "w5500.h"
 #include "web_page.h"
@@ -93,20 +94,25 @@ static bool response(http_client_t *client, unsigned int status, const char *rea
 
 static bool adc_response(http_client_t *client, const adc_snapshot_t *adc)
 {
-    char json[384];
+    char json[640];
+    char clock[160];
     const uint32_t link_speed_mbps = w5500_link_speed_mbps();
     const uint32_t mv0 = ((uint32_t)adc->raw[0] * APP_ADC_VREF_MV + 2047U) / 4095U;
     const uint32_t mv1 = ((uint32_t)adc->raw[1] * APP_ADC_VREF_MV + 2047U) / 4095U;
-    const int count =
-        snprintf(json, sizeof(json),
-                 "{\"raw\":[%u,%u],\"mv\":[%lu,%lu],\"vref_mv\":%u,"
-                 "\"adc_ok\":%s,\"link\":%s,\"link_speed_mbps\":%lu,\"sample_ms\":%lu,"
-                 "\"sample_count\":%lu,\"uptime_ms\":%lu,\"led_on\":%s}",
-                 (unsigned int)adc->raw[0], (unsigned int)adc->raw[1], (unsigned long)mv0,
-                 (unsigned long)mv1, APP_ADC_VREF_MV, adc->valid ? "true" : "false",
-                 link_speed_mbps != 0U ? "true" : "false", (unsigned long)link_speed_mbps,
-                 (unsigned long)adc->sample_ms, (unsigned long)adc->sample_count,
-                 (unsigned long)board_millis(), board_led_is_on() ? "true" : "false");
+    int count;
+    if (rtc_json(clock, sizeof(clock)) == 0U)
+    {
+        return false;
+    }
+    count = snprintf(json, sizeof(json),
+                     "{\"raw\":[%u,%u],\"mv\":[%lu,%lu],\"vref_mv\":%u,"
+                     "\"adc_ok\":%s,\"link\":%s,\"link_speed_mbps\":%lu,\"sample_ms\":%lu,"
+                     "\"sample_count\":%lu,\"uptime_ms\":%lu,\"led_on\":%s,\"rtc\":%s}",
+                     (unsigned int)adc->raw[0], (unsigned int)adc->raw[1], (unsigned long)mv0,
+                     (unsigned long)mv1, APP_ADC_VREF_MV, adc->valid ? "true" : "false",
+                     link_speed_mbps != 0U ? "true" : "false", (unsigned long)link_speed_mbps,
+                     (unsigned long)adc->sample_ms, (unsigned long)adc->sample_count,
+                     (unsigned long)board_millis(), board_led_is_on() ? "true" : "false", clock);
     return (count > 0) && ((size_t)count < sizeof(json)) &&
            response(client, 200U, "OK", "application/json", json, (size_t)count, "");
 }
@@ -273,10 +279,47 @@ static bool commands_response(http_client_t *client, bool save)
     }
 }
 
+static bool rtc_response(http_client_t *client, bool set)
+{
+    if (set)
+    {
+        size_t offset;
+        rtc_date_t date;
+        for (offset = 0U; offset + 4U <= client->used; ++offset)
+        {
+            if (memcmp(client->request + offset, "\r\n\r\n", 4U) == 0)
+            {
+                break;
+            }
+        }
+        offset += 4U;
+        if (offset > client->used ||
+            !rtc_parse(client->request + offset, client->used - offset, &date))
+        {
+            return response(client, 400U, "Bad Request", "text/plain", "Invalid date/time\n", 18U,
+                            "");
+        }
+        if (!rtc_set(&date))
+        {
+            return response(client, 503U, "Service Unavailable", "text/plain", "RTC unavailable\n",
+                            16U, "");
+        }
+    }
+    {
+        const size_t size = rtc_json(client->body, sizeof(client->body));
+        return size != 0U &&
+               response(client, 200U, "OK", "application/json", client->body, size, "");
+    }
+}
+
 static bool dispatch(http_client_t *client, http_route_t route, const adc_snapshot_t *adc)
 {
     switch (route)
     {
+    case HTTP_RTC:
+        return rtc_response(client, false);
+    case HTTP_SET_RTC:
+        return rtc_response(client, true);
     case HTTP_PAGE:
         return response(client, 200U, "OK", "text/html; charset=utf-8", web_page,
                         sizeof(web_page) - 1U, "");

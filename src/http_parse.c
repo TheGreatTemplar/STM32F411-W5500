@@ -148,6 +148,10 @@ http_route_t http_parse(const char *request, size_t size)
         return HTTP_BAD_REQUEST;
     }
     path_size = (size_t)(version - path);
+    if (!post && (path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0))
+    {
+        return HTTP_RTC;
+    }
     if (!post && (path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0))
     {
         return HTTP_COMMANDS;
@@ -155,6 +159,7 @@ http_route_t http_parse(const char *request, size_t size)
     if (((path_size == 11U) && (memcmp(path, "/api/led/on", 11U) == 0)) ||
         ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)) ||
         ((path_size == 8U) && (memcmp(path, "/api/spi", 8U) == 0)) ||
+        ((path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0)) ||
         ((path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0)))
     {
         size_t body_size;
@@ -179,6 +184,10 @@ http_route_t http_parse(const char *request, size_t size)
         }
         if (payload)
         {
+            if ((path_size == 8U) && (memcmp(path, "/api/rtc", 8U) == 0))
+            {
+                return HTTP_SET_RTC;
+            }
             return path_size == 8U ? HTTP_SPI : HTTP_SAVE_COMMANDS;
         }
         return path_size == 11U ? HTTP_LED_ON : HTTP_LED_OFF;

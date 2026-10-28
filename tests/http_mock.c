@@ -1,6 +1,7 @@
 #include "command_store.h"
 #include "config.h"
 #include "http.h"
+#include "rtc.h"
 #include "spi_console.h"
 #include "w5500.h"
 #include <stdio.h>
@@ -29,6 +30,32 @@ static bool led_on;
 static uint32_t led_writes;
 static bool fail_diagnostics;
 static uint32_t save_calls;
+static uint32_t rtc_writes;
+
+bool rtc_parse(const char *text, size_t size, rtc_date_t *date)
+{
+    memset(date, 0, sizeof(*date));
+    return size == 19U && memcmp(text, "2032-02-29T12:34:56", 19U) == 0;
+}
+
+bool rtc_set(const rtc_date_t *date)
+{
+    (void)date;
+    ++rtc_writes;
+    return true;
+}
+
+size_t rtc_json(char *json, size_t capacity)
+{
+    const char *text = "{\"ready\":true,\"set\":true,\"lse_ready\":true,\"error\":0,\"datetime\":"
+                       "\"2032-02-29T12:34:56\"}";
+    if (capacity <= strlen(text))
+    {
+        return 0U;
+    }
+    strcpy(json, text);
+    return strlen(text);
+}
 
 store_error_t command_store_save(const char *body, size_t size)
 {
@@ -436,6 +463,32 @@ int test_entry(void)
     CHECK(save_calls == 1U && spi_calls == 1U);
     CHECK(strstr(output, "202 Accepted") != NULL);
     CHECK(framing_ok());
+
+    prepare("GET /api/rtc HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "2032-02-29T12:34:56") != NULL);
+    CHECK(rtc_writes == 0U && framing_ok());
+    prepare("POST /api/rtc HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: "
+            "19\r\n\r\n2032-02-29T12:34:56");
+    fragment_size = 1U;
+    for (i = 0U; i + 1U < input_size; ++i)
+    {
+        http_poll(&adc);
+        CHECK(rtc_writes == 0U);
+    }
+    pump(&adc);
+    CHECK(rtc_writes == 1U && framing_ok());
+    for (i = 0U; i < 20U; ++i)
+    {
+        http_poll(&adc);
+    }
+    CHECK(rtc_writes == 1U);
+    prepare("POST /api/rtc HTTP/1.1\r\nContent-Length: 19\r\n\r\n2032-02-29T12:34:56");
+    pump(&adc);
+    CHECK(strstr(output, "400 Bad Request") != NULL && rtc_writes == 1U);
+    prepare("POST /api/rtc HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 3\r\n\r\nbad");
+    pump(&adc);
+    CHECK(strstr(output, "400 Bad Request") != NULL && rtc_writes == 1U && framing_ok());
 
     prepare("GET / HTTP/1.1\r\n"); /* Socket 0 holds an incomplete request. */
     strcpy(secondary_input[0], "GET /api/adc HTTP/1.1\r\n\r\n");

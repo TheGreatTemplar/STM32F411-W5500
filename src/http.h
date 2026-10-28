@@ -19,7 +19,9 @@ typedef enum
     HTTP_DIAGNOSTICS,
     HTTP_SPI,
     HTTP_COMMANDS,
-    HTTP_SAVE_COMMANDS
+    HTTP_SAVE_COMMANDS,
+    HTTP_RTC,
+    HTTP_SET_RTC
 } http_route_t;
 
 typedef struct

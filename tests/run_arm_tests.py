@@ -78,6 +78,8 @@ requests = [
     (b"GET /api/diagnosticsX HTTP/1.1\r\n\r\n", 3),
     (b"POST /api/diagnostics HTTP/1.1\r\n\r\n", 5),
     (b"GET /api/commands HTTP/1.1\r\n\r\n", 11),
+    (b"GET /api/rtc HTTP/1.1\r\n\r\n", 13),
+    (spi_request.replace(b"/api/spi", b"/api/rtc"), 14),
     (spi_request.replace(b"/api/spi", b"/api/commands"), 12),
     (spi_request, 10),
     (spi_request[:-1], 0),
@@ -93,7 +95,7 @@ for request, expected in requests:
     assert result == expected, (request, result, expected)
     count += 1
 for request, route in requests:
-    if route not in {1, 2, 6, 7, 9, 10, 11, 12}:
+    if route not in {1, 2, 6, 7, 9, 10, 11, 12, 13, 14}:
         continue
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
@@ -218,3 +220,100 @@ uc, symbols = load_image(root / "build/store_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"Flash journal mock failed at C source line {result}"
 print("W25Q64JV: four slots, erase/page boundaries, reboot, interrupted write, CRC fallback and foreign-data protection passed")
+
+# Run the real calendar parser and RTC register code, without a ticking oscillator.
+import json
+from datetime import date as calendar_date
+from unicorn.arm_const import UC_ARM_REG_R2
+uc, symbols = load_image(root / "build/adc_web.axf")
+for base_address in [0x40002000, 0x40007000, 0x40023000]:
+    uc.mem_map(base_address, 0x1000)
+
+def parse_rtc(text):
+    body = text.encode()
+    uc.mem_write(0x20010000, body or b'\0')
+    uc.reg_write(UC_ARM_REG_R0, 0x20010000)
+    uc.reg_write(UC_ARM_REG_R1, len(body))
+    uc.reg_write(UC_ARM_REG_R2, 0x20018000)
+    return call(uc, symbols['rtc_parse'])
+
+for year in [2000, 2001, 2024, 2032, 2099]:
+    for month in range(1, 13):
+        for day in [28, 29, 30, 31]:
+            try:
+                calendar_date(year, month, day)
+                valid = True
+            except ValueError:
+                valid = False
+            assert bool(parse_rtc(f'{year:04}-{month:02}-{day:02}T23:59:59')) == valid
+for text in ['', '1999-12-31T00:00:00', '2100-01-01T00:00:00', '2026-00-01T00:00:00',
+             '2026-13-01T00:00:00', '2026-01-00T00:00:00', '2026-01-01T24:00:00',
+             '2026-01-01T00:60:00', '2026-01-01T00:00:60', '2026-01-01 00:00:00',
+             '2026-01-01T00:00:00Z', '2026-01-01T00:00:0X']:
+    assert parse_rtc(text) == 0, text
+
+def write_register(address, value):
+    uc.mem_write(address, value.to_bytes(4, 'little'))
+
+def read_register(address):
+    return int.from_bytes(uc.mem_read(address, 4), 'little')
+
+def read_rtc():
+    uc.reg_write(UC_ARM_REG_R0, 0x20010000)
+    uc.reg_write(UC_ARM_REG_R1, 160)
+    size = call(uc, symbols['rtc_json'])
+    assert 0 < size < 160
+    return json.loads(bytes(uc.mem_read(0x20010000, size)))
+
+write_register(0x40023870, 2) # LSE ready
+write_register(0x4000280C, 64) # INITF
+call(uc, symbols['rtc_init'])
+from unicorn import UC_HOOK_MEM_WRITE
+prescaler_writes = []
+def watch_prescaler(machine, access, address, size, value, data):
+    prescaler_writes.append(value)
+prescaler_hook = uc.hook_add(UC_HOOK_MEM_WRITE, watch_prescaler, begin=0x40002810, end=0x40002813)
+call(uc, symbols['rtc_poll'])
+uc.hook_del(prescaler_hook)
+assert prescaler_writes == [255, 0x007F00FF]
+assert read_rtc()['ready'] and not read_rtc()['set']
+assert read_register(0x40002810) == 0x007F00FF
+assert read_register(0x40023870) & 0x8100 == 0x8100
+assert parse_rtc('2032-02-29T12:34:56')
+uc.reg_write(UC_ARM_REG_R0, 0x20018000)
+assert call(uc, symbols['rtc_set']) == 1
+assert read_register(0x40002800) == 0x00123456
+assert (read_register(0x40002804) >> 13) & 7 == calendar_date(2032, 2, 29).isoweekday()
+assert read_rtc()['datetime'] == '2032-02-29T12:34:56'
+retained = bytes(uc.mem_read(0x40002800, 8))
+call(uc, symbols['rtc_init'])
+call(uc, symbols['rtc_poll'])
+assert bytes(uc.mem_read(0x40002800, 8)) == retained
+assert read_rtc()['set']
+assert parse_rtc('2000-01-01T00:00:00')
+uc.reg_write(UC_ARM_REG_R0, 0x20018000)
+assert call(uc, symbols['rtc_set']) == 1
+assert read_rtc()['datetime'] == '2000-01-01T00:00:00'
+write_register(0x40002800, 0x002A0000) # Invalid BCD hour
+assert not read_rtc()['set'] and read_rtc()['error'] == 5
+write_register(0x40002810, 0)
+call(uc, symbols['rtc_init'])
+call(uc, symbols['rtc_poll'])
+assert read_rtc()['error'] == 4
+write_register(0x40023870, 0x8200) # Foreign LSI source; no backup-domain reset allowed.
+call(uc, symbols['rtc_init'])
+assert read_rtc()['error'] == 1 and read_register(0x40023870) == 0x8200
+write_register(0x40023870, 0)
+call(uc, symbols['rtc_init'])
+write_register(symbols['tick_ms'], read_register(symbols['tick_ms']) + 8000)
+call(uc, symbols['rtc_poll'])
+assert read_rtc()['error'] == 2 and not read_rtc()['ready']
+write_register(0x40023870, 2)
+write_register(0x40002850, 0) # No retained marker
+write_register(0x4000280C, 0) # INITF never arrives
+call(uc, symbols['rtc_init'])
+hook = uc.hook_add(UC_HOOK_CODE, advance_tick)
+call(uc, symbols['rtc_poll'])
+uc.hook_del(hook)
+assert read_rtc()['error'] == 3 and not read_rtc()['ready']
+print('RTC: 252 calendar cases, BCD/weekday, explicit set, retained reboot, year 2000, LSE/INIT failures and foreign clock protection passed')
