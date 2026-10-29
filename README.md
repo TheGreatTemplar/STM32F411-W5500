@@ -82,6 +82,7 @@ W25Q64JV (8 Мбайт, CS PA4, общая SPI1) содержит два бан�
 ## Быстрый доступ
 
 - **[Распиновка автономного стенда](firmware/PINOUT.md)**
+- **[Таблица подключения SPI и I2C](documentation/SPI_I2C_PINOUT.md)**
 - [Среда разработки и правила прошивки](firmware/README.md)
 - [Архитектура и этапы реализации](documentation/ARCHITECTURE.md)
 - [Аппаратная часть](hardware/README.md)
