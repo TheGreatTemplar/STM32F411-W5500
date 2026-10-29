@@ -3088,7 +3088,10 @@
         get('uart-start').addEventListener('click', () => controlUart('start'));
         get('uart-off').addEventListener('click', () => controlUart('stop'));
         get('uart-send').addEventListener('click', () => controlUart('tx'));
-        get('uart-clear').addEventListener('click', () => { get('uart-rx').value = ''; });
+        get('uart-clear').addEventListener('click', () =>
+        {
+            get('uart-rx').value = '';
+        });
         get('uart-command').addEventListener('input', () =>
         {
             const field = get('uart-command');
