@@ -54,3 +54,6 @@ W25Q64JV для хранения часов не используется.
 
 Последовательности настройки и чтения сверены по
 [ST RM0383, раздел 17](https://www.st.com/resource/en/reference_manual/rm0383-stm32f411xce-advanced-armbased-32bit-mcus-stmicroelectronics.pdf).
+
+Панель часов находится перед аналоговыми каналами. Калибровка хода отдельно
+описана как [предлагаемое расширение](RTC_CALIBRATION.md); CALR в этой версии не меняется.

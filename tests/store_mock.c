@@ -2,9 +2,10 @@
 #include "command_store.h"
 #include <string.h>
 
-#define MEDIA_BASE 7864320UL
-#define LAST_PAIR (63U * 8192U)
-static uint8_t media[524288];
+#define MEDIA_BASE 7340032UL
+#define OLD_BASE 524288U
+#define LAST_PAIR (OLD_BASE + 63U * 8192U)
+static uint8_t media[1048576];
 static uint32_t now;
 static uint32_t busy_polls;
 static uint32_t writes;
@@ -154,7 +155,7 @@ static void init_store(void)
 {
     uint32_t i;
     command_store_init();
-    for (i = 0U; i < 2200U; ++i)
+    for (i = 0U; i < 9000U; ++i)
     {
         command_store_poll();
     }
@@ -300,14 +301,14 @@ int test_entry(void)
     CHECK(!command_library_name_valid("\xED\xA0\x80", 3U));
     CHECK(!command_library_name_valid("\xF4\x90\x80\x80", 4U));
     CHECK(!command_library_name_valid("123456789012345678901234567890123", 33U));
-    CHECK(command_library_save(64U, "日本語", sizeof("日本語") - 1U, a, sizeof(a) - 1U) ==
-          STORE_OK);
+    CHECK(command_library_save(COMMAND_LIBRARY_NEW, "日本語", sizeof("日本語") - 1U, a,
+                               sizeof(a) - 1U) == STORE_OK);
     CHECK(finish_save());
     CHECK(strstr(json, "日本語") != NULL);
     CHECK(command_library_json(json, sizeof(json), 0U) != 0U);
     CHECK(strstr(json, "日本語") != NULL);
-    CHECK(command_library_save(64U, "日本語", sizeof("日本語") - 1U, b, sizeof(b) - 1U) ==
-          STORE_EXISTS);
+    CHECK(command_library_save(COMMAND_LIBRARY_NEW, "日本語", sizeof("日本語") - 1U, b,
+                               sizeof(b) - 1U) == STORE_EXISTS);
     CHECK(command_library_load(0U) == STORE_OK);
     CHECK(command_library_save(0U, "Проверка", sizeof("Проверка") - 1U, b, sizeof(b) - 1U) ==
           STORE_OK);
@@ -327,10 +328,10 @@ int test_entry(void)
     CHECK(finish_save());
     init_store();
     CHECK(command_library_load(0U) == STORE_NOT_FOUND);
-    CHECK(command_library_save(64U, "New", 3U, a, sizeof(a) - 1U) == STORE_OK);
+    CHECK(command_library_save(COMMAND_LIBRARY_NEW, "New", 3U, a, sizeof(a) - 1U) == STORE_OK);
     CHECK(finish_save());
     CHECK(command_library_load(0U) == STORE_OK);
-    CHECK(command_library_json(json, sizeof(json), 64U) == 0U);
+    CHECK(command_library_json(json, sizeof(json), 128U) == 0U);
     memset(media, 0xFF, sizeof(media));
     init_store();
     CHECK(command_store_save(a, sizeof(a) - 1U) == STORE_OK);
@@ -356,29 +357,32 @@ int test_entry(void)
     CHECK(command_store_json(json, sizeof(json)) != 0U);
     CHECK(strstr(json, "Миграция") != NULL);
     memset(media, 0xFF, sizeof(media));
-    media[4000U] = 0x5AU; /* Foreign bytes outside the used record length must also be protected. */
+    media[OLD_BASE + 4000U] =
+        0x5AU; /* Foreign bytes outside the used record length must also be protected. */
     init_store();
     CHECK(command_library_save(0U, "Foreign", 7U, a, sizeof(a) - 1U) == STORE_FOREIGN_DATA);
-    CHECK(command_library_save(64U, "Safe", 4U, a, sizeof(a) - 1U) == STORE_OK);
+    CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Safe", 4U, a, sizeof(a) - 1U) == STORE_OK);
     CHECK(finish_save());
-    CHECK(media[4000U] == 0x5AU);
+    CHECK(media[OLD_BASE + 4000U] == 0x5AU);
     CHECK(command_library_load(1U) == STORE_OK);
     memset(media, 0xFF, sizeof(media));
     init_store();
     for (i = 0U; i < 64U; ++i)
     {
         const char name[3] = {'S', (char)('0' + i / 10U), (char)('0' + i % 10U)};
-        CHECK(command_library_save(64U, name, sizeof(name), a, sizeof(a) - 1U) == STORE_OK);
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, name, sizeof(name), a, sizeof(a) - 1U) ==
+              STORE_OK);
         CHECK(finish_save());
     }
-    CHECK(command_library_save(64U, "Overflow", 8U, a, sizeof(a) - 1U) == STORE_FULL);
+    CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Overflow", 8U, a, sizeof(a) - 1U) ==
+          STORE_FULL);
     init_store();
     CHECK(command_library_json(json, sizeof(json), 56U) != 0U);
-    CHECK(strstr(json, "\"used\":64") != NULL && strstr(json, "\"next\":null") != NULL);
+    CHECK(strstr(json, "\"used\":64") != NULL && strstr(json, "\"next\":64") != NULL);
     CHECK(command_library_load(17U) == STORE_OK);
     CHECK(command_library_delete(17U) == STORE_OK);
     CHECK(finish_save());
-    CHECK(command_library_save(64U, "Reuse", 5U, b, sizeof(b) - 1U) == STORE_OK);
+    CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Reuse", 5U, b, sizeof(b) - 1U) == STORE_OK);
     CHECK(finish_save());
     CHECK(command_library_load(17U) == STORE_OK);
     CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "Reuse") != NULL);
@@ -409,23 +413,102 @@ int test_entry(void)
             "bus=1 hz=100000 addr=8 op=1 read=256 format=hex\nlengths=0,0,0,0\n";
         const char bad_read[] =
             "bus=1 hz=100000 addr=8 op=1 read=256 format=hex\nlengths=2,0,0,0\n00";
-        CHECK(command_library_save(64U, "I2C", 3U, i2c, sizeof(i2c) - 1U) == STORE_OK);
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, "I2C", 3U, i2c, sizeof(i2c) - 1U) ==
+              STORE_OK);
         CHECK(finish_save());
         init_store();
-        CHECK(command_library_load(0U) == STORE_OK);
+        CHECK(command_library_load(64U) == STORE_OK);
         CHECK(command_store_json(json, sizeof(json)) != 0U);
         CHECK(strstr(json, "\"bus\":1") != NULL && strstr(json, "\"address\":80") != NULL);
         CHECK(strstr(json, "\"read_size\":2") != NULL && strstr(json, "AB CD") != NULL);
-        CHECK(command_library_save(0U, "I2C", 3U, bad_read, sizeof(bad_read) - 1U) ==
+        CHECK(command_library_save(64U, "I2C", 3U, bad_read, sizeof(bad_read) - 1U) ==
               STORE_INVALID);
-        CHECK(command_library_save(0U, "I2C", 3U, read_only, sizeof(read_only) - 1U) == STORE_OK);
+        CHECK(command_library_save(64U, "I2C", 3U, read_only, sizeof(read_only) - 1U) == STORE_OK);
         CHECK(finish_save());
         init_store();
-        CHECK(command_library_load(0U) == STORE_OK);
+        CHECK(command_library_load(64U) == STORE_OK);
         CHECK(command_store_json(json, sizeof(json)) != 0U &&
               strstr(json, "\"read_size\":256") != NULL);
         CHECK(command_library_load(63U) == STORE_OK); /* Legacy SPI remains intact. */
         CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"bus\":2") != NULL);
     }
+    /* A v3 I2C file from the former shared region migrates copy-first. */
+    CHECK(command_library_save(63U, "Default", 7U, a, sizeof(a) - 1U) == STORE_OK);
+    CHECK(finish_save()); /* This newer SPI file must remain the default after migration. */
+    memcpy(media + OLD_BASE, media, 8192U);
+    memset(media, 0xFF, 8192U);
+    command_store_init();
+    for (i = 0U; i < 4106U; ++i)
+    {
+        command_store_poll();
+    }
+    CHECK(media[OLD_BASE + 4U] == 3U); /* Interrupted destination write keeps the source. */
+    init_store();
+    CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"id\":63") != NULL);
+    CHECK(command_library_load(0U) == STORE_NOT_FOUND);
+    CHECK(command_library_load(65U) == STORE_OK); /* Torn first destination is protected. */
+    CHECK(command_store_json(json, sizeof(json)) != 0U &&
+          strstr(json, "\"read_size\":256") != NULL);
+
+    /* Power loss after destination commit must reuse it, not create another file. */
+    memcpy(media + OLD_BASE, media + 8192U, 8192U);
+    memset(media, 0xFF, 16384U);
+    command_store_init();
+    for (i = 0U; i < 4096U; ++i)
+    {
+        command_store_poll();
+    }
+    for (i = 0U; i < 1000U; ++i)
+    {
+        uint32_t marker;
+        command_store_poll();
+        memcpy(&marker, media + 20U, sizeof(marker));
+        if (marker == 0xA55AC33CUL)
+        {
+            break;
+        }
+    }
+    CHECK(i < 1000U);
+    {
+        uint32_t sequence;
+        uint32_t retained;
+        memcpy(&sequence, media + 8U, sizeof(sequence));
+        init_store();
+        memcpy(&retained, media + 8U, sizeof(retained));
+        CHECK(sequence == retained);
+        CHECK(command_library_load(64U) == STORE_OK && command_library_load(0U) == STORE_NOT_FOUND);
+    }
+
+    /* Both buses have their own full quota; equal names across buses are allowed. */
+    memset(media, 0xFF, sizeof(media));
+    init_store();
+    for (i = 0U; i < 64U; ++i)
+    {
+        const char name[3] = {'S', (char)('0' + i / 10U), (char)('0' + i % 10U)};
+        const char read_only[] =
+            "bus=1 hz=100000 addr=80 op=1 read=4 format=hex\nlengths=0,0,0,0\n";
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, name, sizeof(name), a, sizeof(a) - 1U) ==
+              STORE_OK);
+        CHECK(finish_save());
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, name, sizeof(name), read_only,
+                                   sizeof(read_only) - 1U) == STORE_OK);
+        CHECK(finish_save());
+    }
+    CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Full", 4U, a, sizeof(a) - 1U) == STORE_FULL);
+    {
+        const char read_only[] =
+            "bus=1 hz=100000 addr=80 op=1 read=4 format=hex\nlengths=0,0,0,0\n";
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Full", 4U, read_only,
+                                   sizeof(read_only) - 1U) == STORE_FULL);
+        CHECK(command_library_save(0U, "Wrong", 5U, read_only, sizeof(read_only) - 1U) ==
+              STORE_INVALID);
+    }
+    init_store();
+    CHECK(command_library_load(63U) == STORE_OK);
+    CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"bus\":2") != NULL);
+    CHECK(command_library_load(127U) == STORE_OK);
+    CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"bus\":1") != NULL);
+    CHECK(command_library_json(json, sizeof(json), 120U) != 0U);
+    CHECK(strstr(json, "\"used\":128") != NULL && strstr(json, "\"next\":null") != NULL);
     return 0;
 }

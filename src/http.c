@@ -255,7 +255,7 @@ static bool i2c_response(http_client_t *client)
                     (size_t)count, "");
 }
 
-static bool spi_response(http_client_t *client)
+static bool spi_response(http_client_t *client, bool config)
 {
     static const char digits[] = "0123456789ABCDEF";
     spi_command_t command;
@@ -265,6 +265,7 @@ static bool spi_response(http_client_t *client)
     size_t offset;
     size_t i;
     int count;
+    char settings[160];
     for (offset = 0U; offset + 4U <= client->used; ++offset)
     {
         if (memcmp(client->request + offset, "\r\n\r\n", 4U) == 0)
@@ -273,6 +274,35 @@ static bool spi_response(http_client_t *client)
         }
     }
     offset += 4U;
+    if (config)
+    {
+        const size_t size = offset <= client->used ? client->used - offset : 0U;
+        if (size == 0U || size + 2U > sizeof(settings) ||
+            client->request[client->used - 1U] != '\n' ||
+            memchr(client->request + offset, '\n', size - 1U) != NULL)
+        {
+            return response(client, 400U, "Bad Request", "text/plain", "Invalid SPI settings\n",
+                            21U, "");
+        }
+        memcpy(settings, client->request + offset, size);
+        memcpy(settings + size, "00", 2U);
+        if (!spi_command_parse(settings, size + 2U, &command))
+        {
+            return response(client, 400U, "Bad Request", "text/plain", "Invalid SPI settings\n",
+                            21U, "");
+        }
+        command.size = 0U;
+        if (!board_spi_console_config(&command))
+        {
+            return response(client, 409U, "Conflict", "text/plain", "SPI busy\n", 9U, "");
+        }
+        count = snprintf(client->body, sizeof(client->body),
+                         "{\"applied\":true,\"mode\":%lu,\"hz\":%lu,\"lsb\":%lu,\"cs_high\":%lu}",
+                         (unsigned long)command.mode, (unsigned long)command.hz,
+                         (unsigned long)command.lsb_first, (unsigned long)command.cs_high);
+        return count > 0 && (size_t)count < sizeof(client->body) &&
+               response(client, 200U, "OK", "application/json", client->body, (size_t)count, "");
+    }
     if ((offset > client->used) ||
         !spi_command_parse(client->request + offset, client->used - offset, &command))
     {
@@ -416,7 +446,7 @@ static bool library_response(http_client_t *client, bool command)
         offset = 5U;
         if (size >= 5U && memcmp(body, "list ", 5U) == 0 &&
             library_number(body, size, &offset, &id, '\n') && offset == size &&
-            id < COMMAND_LIBRARY_SLOTS)
+            id < COMMAND_LIBRARY_TOTAL)
         {
             listing = true;
         }
@@ -492,7 +522,9 @@ static bool dispatch(http_client_t *client, http_route_t route, const adc_snapsh
     case HTTP_DIAGNOSTICS:
         return diagnostics_response(client);
     case HTTP_SPI:
-        return spi_response(client);
+        return spi_response(client, false);
+    case HTTP_SPI_CONFIG:
+        return spi_response(client, true);
     case HTTP_COMMANDS:
         return commands_response(client, false);
     case HTTP_SAVE_COMMANDS:

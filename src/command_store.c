@@ -6,7 +6,8 @@
 
 #define FLASH_BYTES 8388608UL
 #define SECTOR_BYTES 4096UL
-#define STORE_BASE (FLASH_BYTES - COMMAND_LIBRARY_SLOTS * 2UL * SECTOR_BYTES)
+#define STORE_BASE (FLASH_BYTES - COMMAND_LIBRARY_TOTAL * 2UL * SECTOR_BYTES)
+#define SPI_STORE_BASE (FLASH_BYTES - COMMAND_LIBRARY_SLOTS * 2UL * SECTOR_BYTES)
 #define STORE_MAGIC 0x34444D43UL
 #define STORE_COMMIT 0xA55AC33CUL
 
@@ -48,8 +49,9 @@ typedef struct
     char name[COMMAND_LIBRARY_NAME_BYTES];
 } library_entry_t;
 
-static library_entry_t catalog[COMMAND_LIBRARY_SLOTS];
+static library_entry_t catalog[COMMAND_LIBRARY_TOTAL];
 static bool scanning;
+static bool migrating;
 static uint32_t scan_sector;
 static size_t scan_offset;
 static bool scan_blank;
@@ -235,7 +237,8 @@ static bool newer(uint32_t a, uint32_t b)
 
 static uint32_t slot_address(uint32_t id, uint32_t copy)
 {
-    return STORE_BASE + (id * 2U + copy) * SECTOR_BYTES;
+    return (id < COMMAND_LIBRARY_SLOTS ? SPI_STORE_BASE : STORE_BASE) +
+           ((id % COMMAND_LIBRARY_SLOTS) * 2U + copy) * SECTOR_BYTES;
 }
 
 static bool valid_record(const store_record_t *record)
@@ -293,9 +296,11 @@ static void defaults(void)
     memset(&current, 0, sizeof(current));
     current.hz = 1000000U;
     current.bus = 2U;
-    selected_id = COMMAND_LIBRARY_SLOTS;
+    selected_id = COMMAND_LIBRARY_NEW;
     has_saved = false;
 }
+
+static void migration_step(void);
 
 static void scan_step(void)
 {
@@ -310,8 +315,7 @@ static void scan_step(void)
         memset(&candidate, 0xFF, sizeof(candidate));
         scan_blank = true;
     }
-    if (!addressed(0x03U, STORE_BASE + scan_sector * SECTOR_BYTES + scan_offset, NULL, bytes,
-                   sizeof(bytes)))
+    if (!addressed(0x03U, slot_address(id, copy) + scan_offset, NULL, bytes, sizeof(bytes)))
     {
         scanning = false;
         last_error = STORE_IO;
@@ -335,7 +339,9 @@ static void scan_step(void)
     {
         return;
     }
-    if ((candidate.version >= 2U || id == COMMAND_LIBRARY_SLOTS - 1U) && valid_record(&candidate))
+    if ((candidate.version >= 2U || id == COMMAND_LIBRARY_SLOTS - 1U) &&
+        (id < COMMAND_LIBRARY_SLOTS || (candidate.version >= 3U && candidate.bus == 1U)) &&
+        valid_record(&candidate))
     {
         normalize(&candidate);
         if (entry->kind == 0U || entry->kind == 3U || newer(candidate.sequence, entry->sequence))
@@ -368,29 +374,11 @@ static void scan_step(void)
     {
         defaults(); /* The newer tombstone hides the old live copy. */
     }
-    if (scan_sector == COMMAND_LIBRARY_SLOTS * 2U)
+    if (scan_sector == COMMAND_LIBRARY_TOTAL * 2U)
     {
-        uint32_t latest = COMMAND_LIBRARY_SLOTS;
-        for (i = 0U; i < COMMAND_LIBRARY_SLOTS; ++i)
-        {
-            if (catalog[i].kind == 1U && (latest == COMMAND_LIBRARY_SLOTS ||
-                                          newer(catalog[i].sequence, catalog[latest].sequence)))
-            {
-                latest = (uint32_t)i;
-            }
-        }
         scanning = false;
-        ready = true;
-        last_error = STORE_OK;
-        if (latest != COMMAND_LIBRARY_SLOTS)
-        {
-            last_error = command_library_load(latest);
-        }
-        else
-        {
-            defaults();
-        }
-        save_ok = has_saved;
+        migrating = true;
+        migration_step();
     }
 }
 
@@ -403,6 +391,7 @@ void command_store_init(void)
     defaults();
     memset(catalog, 0, sizeof(catalog));
     scanning = false;
+    migrating = false;
     generation = 0U;
     scan_sector = 0U;
     scan_offset = 0U;
@@ -552,7 +541,7 @@ static bool parse_snapshot(const char *body, size_t size)
 
 static store_error_t available(void)
 {
-    if (job != JOB_IDLE || scanning)
+    if (job != JOB_IDLE || scanning || migrating)
     {
         return STORE_BUSY;
     }
@@ -587,7 +576,7 @@ store_error_t command_library_load(uint32_t id)
     {
         return error;
     }
-    if (id >= COMMAND_LIBRARY_SLOTS || catalog[id].kind != 1U)
+    if (id >= COMMAND_LIBRARY_TOTAL || catalog[id].kind != 1U)
     {
         return STORE_NOT_FOUND;
     }
@@ -621,39 +610,43 @@ store_error_t command_library_save(uint32_t id, const char *name, size_t name_si
     {
         return STORE_NAME;
     }
-    if (id > COMMAND_LIBRARY_SLOTS)
-    {
-        return STORE_NOT_FOUND;
-    }
-    if (id < COMMAND_LIBRARY_SLOTS && catalog[id].kind == 3U)
-    {
-        return STORE_FOREIGN_DATA;
-    }
-    for (i = 0U; i < COMMAND_LIBRARY_SLOTS; ++i)
-    {
-        if (i != id && catalog[i].kind == 1U && catalog[i].name_size == name_size &&
-            memcmp(catalog[i].name, name, name_size) == 0)
-        {
-            return STORE_EXISTS;
-        }
-    }
-    if (id == COMMAND_LIBRARY_SLOTS)
-    {
-        for (id = 0U; id < COMMAND_LIBRARY_SLOTS; ++id)
-        {
-            if (catalog[id].kind == 0U || catalog[id].kind == 2U)
-            {
-                break;
-            }
-        }
-        if (id == COMMAND_LIBRARY_SLOTS)
-        {
-            return STORE_FULL;
-        }
-    }
     if (!parse_snapshot(body, size))
     {
         return STORE_INVALID;
+    }
+    {
+        const uint32_t first = candidate.bus == 2U ? 0U : COMMAND_LIBRARY_SLOTS;
+        const uint32_t end = first + COMMAND_LIBRARY_SLOTS;
+        if (id != COMMAND_LIBRARY_NEW && (id < first || id >= end))
+        {
+            return STORE_INVALID;
+        }
+        if (id < COMMAND_LIBRARY_TOTAL && catalog[id].kind == 3U)
+        {
+            return STORE_FOREIGN_DATA;
+        }
+        for (i = first; i < end; ++i)
+        {
+            if (i != id && catalog[i].kind == 1U && catalog[i].bus == candidate.bus &&
+                catalog[i].name_size == name_size && memcmp(catalog[i].name, name, name_size) == 0)
+            {
+                return STORE_EXISTS;
+            }
+        }
+        if (id == COMMAND_LIBRARY_NEW)
+        {
+            for (id = first; id < end; ++id)
+            {
+                if (catalog[id].kind == 0U || catalog[id].kind == 2U)
+                {
+                    break;
+                }
+            }
+            if (id == end)
+            {
+                return STORE_FULL;
+            }
+        }
     }
     candidate.name_size = (uint32_t)name_size;
     memcpy(candidate.name, name, name_size);
@@ -663,7 +656,10 @@ store_error_t command_library_save(uint32_t id, const char *name, size_t name_si
 
 store_error_t command_store_save(const char *body, size_t size)
 {
-    const uint32_t id = has_saved ? selected_id : COMMAND_LIBRARY_SLOTS - 1U;
+    const uint32_t id =
+        has_saved ? selected_id
+                  : (size >= 6U && memcmp(body, "bus=1 ", 6U) == 0 ? COMMAND_LIBRARY_NEW
+                                                                   : COMMAND_LIBRARY_SLOTS - 1U);
     const char *name = has_saved ? current.name : "Default";
     const size_t name_size = has_saved ? current.name_size : 7U;
     return command_library_save(id, name, name_size, body, size);
@@ -676,7 +672,7 @@ store_error_t command_library_delete(uint32_t id)
     {
         return error;
     }
-    if (id >= COMMAND_LIBRARY_SLOTS || catalog[id].kind != 1U)
+    if (id >= COMMAND_LIBRARY_TOTAL || catalog[id].kind != 1U)
     {
         return STORE_NOT_FOUND;
     }
@@ -695,9 +691,92 @@ store_error_t command_library_delete(uint32_t id)
     return STORE_OK;
 }
 
+/* Resume migration from catalog evidence, without a separate fragile progress record.
+ * First commit the I2C copy, then commit a tombstone in its legacy SPI pair. */
+static void migration_step(void)
+{
+    uint32_t source;
+    uint32_t target;
+    uint32_t free_id;
+    uint32_t source_sequence;
+    uint32_t latest = COMMAND_LIBRARY_NEW;
+    for (source = 0U; source < COMMAND_LIBRARY_SLOTS; ++source)
+    {
+        if (catalog[source].kind != 1U || catalog[source].bus != 1U)
+        {
+            continue;
+        }
+        free_id = COMMAND_LIBRARY_NEW;
+        for (target = COMMAND_LIBRARY_SLOTS; target < COMMAND_LIBRARY_TOTAL; ++target)
+        {
+            if (catalog[target].kind == 1U && catalog[target].bus == 1U &&
+                catalog[target].name_size == catalog[source].name_size &&
+                memcmp(catalog[target].name, catalog[source].name, catalog[source].name_size) == 0)
+            {
+                break;
+            }
+            if (free_id == COMMAND_LIBRARY_NEW &&
+                (catalog[target].kind == 0U || catalog[target].kind == 2U))
+            {
+                free_id = target;
+            }
+        }
+        if (!addressed(0x03U, slot_address(source, catalog[source].copy), NULL,
+                       (uint8_t *)&candidate, sizeof(candidate)) ||
+            !valid_record(&candidate))
+        {
+            migrating = false;
+            last_error = STORE_VERIFY;
+            return;
+        }
+        normalize(&candidate);
+        source_sequence = candidate.sequence;
+        if (target < COMMAND_LIBRARY_TOTAL &&
+            !newer(catalog[source].sequence, catalog[target].sequence))
+        {
+            candidate.deleted = 1U;
+            begin_write(source);
+        }
+        else if (target < COMMAND_LIBRARY_TOTAL || free_id < COMMAND_LIBRARY_TOTAL)
+        {
+            begin_write(target < COMMAND_LIBRARY_TOTAL ? target : free_id);
+            candidate.sequence = source_sequence;
+            candidate.crc = record_crc(&candidate);
+        }
+        else
+        {
+            migrating = false;
+            last_error = STORE_FULL;
+        }
+        return;
+    }
+    migrating = false;
+    ready = true;
+    last_error = STORE_OK;
+    for (source = 0U; source < COMMAND_LIBRARY_TOTAL; ++source)
+    {
+        if (catalog[source].kind == 1U &&
+            (latest == COMMAND_LIBRARY_NEW ||
+             newer(catalog[source].sequence, catalog[latest].sequence)))
+        {
+            latest = source;
+        }
+    }
+    if (latest == COMMAND_LIBRARY_NEW)
+    {
+        defaults();
+    }
+    else
+    {
+        last_error = command_library_load(latest);
+    }
+    save_ok = has_saved;
+}
+
 static void fail_job(store_error_t error)
 {
     last_error = error;
+    migrating = false;
     save_ok = false;
     job = JOB_IDLE;
 }
@@ -713,6 +792,10 @@ void command_store_poll(void)
     }
     if (job == JOB_IDLE)
     {
+        if (migrating)
+        {
+            migration_step();
+        }
         return;
     }
     if (!status(&value))
@@ -822,7 +905,10 @@ void command_store_poll(void)
         entry->bus = candidate.bus;
         entry->name_size = candidate.name_size;
         memcpy(entry->name, candidate.name, candidate.name_size);
-        generation = candidate.sequence;
+        if (newer(candidate.sequence, generation))
+        {
+            generation = candidate.sequence;
+        }
         if (candidate.deleted != 0U)
         {
             if (has_saved && selected_id == target_id)
@@ -920,11 +1006,13 @@ size_t command_store_json(char *json, size_t capacity)
     json_writer_t writer = {json, capacity, 0U, 1U};
     uint32_t i;
     put_text(&writer, "{\"scanning\":");
-    put_text(&writer, scanning ? "true" : "false");
+    put_text(&writer, (scanning || migrating) ? "true" : "false");
+    put_text(&writer, ",\"migrating\":");
+    put_text(&writer, migrating ? "true" : "false");
     put_text(&writer, ",\"scan\":");
     put_uint(&writer, scan_sector / 2U);
     put_text(&writer, ",\"id\":");
-    put_uint(&writer, has_saved ? selected_id : COMMAND_LIBRARY_SLOTS);
+    put_uint(&writer, has_saved ? selected_id : COMMAND_LIBRARY_NEW);
     put_text(&writer, ",\"name\":");
     put_string(&writer, has_saved ? current.name : "", has_saved ? current.name_size : 0U);
     put_text(&writer, ",\"present\":");
@@ -995,27 +1083,41 @@ size_t command_library_json(char *json, size_t capacity, uint32_t offset)
     uint32_t blocked = 0U;
     uint32_t count = 0U;
     uint32_t end = offset + 8U;
-    if (offset >= COMMAND_LIBRARY_SLOTS)
+    if (offset >= COMMAND_LIBRARY_TOTAL)
     {
         return 0U;
     }
-    if (end > COMMAND_LIBRARY_SLOTS)
+    if (end > COMMAND_LIBRARY_TOTAL)
     {
-        end = COMMAND_LIBRARY_SLOTS;
+        end = COMMAND_LIBRARY_TOTAL;
     }
-    for (i = 0U; i < COMMAND_LIBRARY_SLOTS; ++i)
+    for (i = 0U; i < COMMAND_LIBRARY_TOTAL; ++i)
     {
         used += catalog[i].kind == 1U ? 1U : 0U;
         blocked += catalog[i].kind == 3U ? 1U : 0U;
     }
     put_text(&writer, "{\"scanning\":");
-    put_text(&writer, scanning ? "true" : "false");
+    put_text(&writer, (scanning || migrating) ? "true" : "false");
     put_text(&writer, ",\"used\":");
     put_uint(&writer, used);
     put_text(&writer, ",\"blocked\":");
     put_uint(&writer, blocked);
+    put_text(&writer, ",\"blocked_spi\":");
+    blocked = 0U;
+    for (i = 0U; i < COMMAND_LIBRARY_SLOTS; ++i)
+    {
+        blocked += catalog[i].kind == 3U ? 1U : 0U;
+    }
+    put_uint(&writer, blocked);
+    put_text(&writer, ",\"blocked_i2c\":");
+    blocked = 0U;
+    for (i = COMMAND_LIBRARY_SLOTS; i < COMMAND_LIBRARY_TOTAL; ++i)
+    {
+        blocked += catalog[i].kind == 3U ? 1U : 0U;
+    }
+    put_uint(&writer, blocked);
     put_text(&writer, ",\"next\":");
-    if (end == COMMAND_LIBRARY_SLOTS)
+    if (end == COMMAND_LIBRARY_TOTAL)
     {
         put_text(&writer, "null");
     }

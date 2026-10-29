@@ -305,6 +305,35 @@ static bool boost_clock(const spi_clock_plan_t *plan)
     return true;
 }
 
+bool board_spi_console_config(const spi_command_t *command)
+{
+    spi_clock_plan_t plan;
+    uint32_t cr1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;
+    if (command->mode > 3U || command->lsb_first > 1U || command->cs_high > 1U ||
+        !spi_clock_plan(command->hz, &plan) || (SPI2->SR & SPI_SR_BSY) != 0U)
+    {
+        return false;
+    }
+    GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
+    SPI2->CR1 = 0U;
+    if ((command->mode & 2U) != 0U)
+    {
+        cr1 |= SPI_CR1_CPOL;
+    }
+    if ((command->mode & 1U) != 0U)
+    {
+        cr1 |= SPI_CR1_CPHA;
+    }
+    if (command->lsb_first != 0U)
+    {
+        cr1 |= SPI_CR1_LSBFIRST;
+    }
+    /* No DR access and no active CS: CPOL becomes visible on the idle SCK pin.
+     * The transfer path selects the required PLL before producing any clocks. */
+    SPI2->CR1 = cr1 | (plan.prescaler << 3U) | SPI_CR1_SPE;
+    return true;
+}
+
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
 {
     spi_clock_plan_t plan;
@@ -398,5 +427,6 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         restore_clock(saved_cfgr, saved_acr, saved_adc);
     }
+    (void)board_spi_console_config(command);
     return ok;
 }

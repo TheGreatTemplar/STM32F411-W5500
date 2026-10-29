@@ -21,6 +21,7 @@ let failDiagnostics = false;
 let failSpi = false;
 let failSpiTransport = false;
 let failI2c = false;
+let failConfig = false;
 let flashBusy = false;
 let failRtc = false;
 let rtcState = {ready: true, set: true, lse_ready: true, error: 0, datetime: '2032-02-29T12:34:56'};
@@ -193,7 +194,7 @@ const context = vm.createContext({
                 const offset = options.method ? Number(options.body.trim().split(' ')[1]) : 0;
                 const sets = [...libraryRecords].map(([id, item]) => ({id, name: item.name, bus: item.settings.bus || 2}));
                 return {ok: true, json: async () => ({scanning: false, used: sets.length, blocked: 0,
-                    next: pagedCatalog && offset + 8 < 64 ? offset + 8 : null,
+                    next: pagedCatalog && offset + 8 < 128 ? offset + 8 : null,
                     sets: pagedCatalog ? sets.filter((item) => item.id >= offset && item.id < offset + 8) : sets})};
             }
             if (options.body.startsWith('save '))
@@ -203,13 +204,14 @@ const context = vm.createContext({
                 const parts = options.body.slice(0, first).split(' ');
                 const name = new TextDecoder().decode(bytes.slice(first + 1, first + 1 + Number(parts[2])));
                 let id = Number(parts[1]);
-                if ([...libraryRecords].some(([key, item]) => key !== id && item.name === name))
+                const requestedBus = options.body.includes('\nbus=1 ') ? 1 : 2;
+                if ([...libraryRecords].some(([key, item]) => key !== id && (item.settings.bus || 2) === requestedBus && item.name === name))
                 {
                     return {ok: false, json: async () => ({error: 12})};
                 }
-                if (id === 64)
+                if (id === 128)
                 {
-                    id = 0;
+                    id = options.body.includes('\nbus=1 ') ? 64 : 0;
                     while (libraryRecords.has(id))
                     {
                         ++id;
@@ -242,7 +244,7 @@ const context = vm.createContext({
                 libraryRecords.delete(id);
                 if (saved.id === id)
                 {
-                    Object.assign(saved, {id: 64, name: '', has_saved: false});
+                    Object.assign(saved, {id: 128, name: '', has_saved: false});
                 }
                 flashBusy = true;
                 return {ok: true, json: async () => ({...saved, busy: true})};
@@ -269,6 +271,11 @@ const context = vm.createContext({
             }
             flashBusy = false;
             return {ok: true, json: async () => ({...saved, busy: flashBusy})};
+        }
+        if (url === '/api/spi/config')
+        {
+            const fields = Object.fromEntries(options.body.trim().split(' ').map(item => item.split('=')));
+            return {ok: !failConfig, json: async () => ({applied: true, mode: Number(fields.mode), hz: Number(fields.hz), lsb: Number(fields.lsb), cs_high: Number(fields.cs_high)})};
         }
         if (url === '/api/i2c')
         {
@@ -341,6 +348,39 @@ async function test()
     assert.equal(elements.get('spi-mode-description').textContent, 'CPOL=1 · CPHA=1');
     assert.equal(elements.get('spi-lsb').checked, true);
     assert.equal(elements.get('spi-cs-high').checked, true);
+    await vm.runInContext('update()', context); // Initial idle SPI configuration.
+    const txBeforeConfig = requests.filter(item => item.url === '/api/spi').length;
+    for (let i = 0; i < 4; ++i)
+    {
+        elements.get('spi-mode-' + i).checked = i === 2;
+    }
+    elements.get('spi-mode-2').change();
+    for (let i = 0; i < 4; ++i)
+    {
+        elements.get('spi-mode-' + i).checked = i === 1;
+    }
+    elements.get('spi-mode-1').change();
+    await vm.runInContext('update()', context);
+    assert.equal(requests.at(-1).url, '/api/spi/config');
+    assert.match(requests.at(-1).options.body, /mode=1.*format=hex\n$/);
+    assert.equal(requests.filter(item => item.url === '/api/spi').length, txBeforeConfig);
+    assert.equal(elements.get('spi-config-status').textContent, 'Настройки SPI применены');
+    for (let i = 0; i < 4; ++i)
+    {
+        elements.get('spi-mode-' + i).checked = i === 3;
+    }
+    elements.get('spi-mode-3').change();
+    failConfig = true;
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('spi-config-status').textContent, 'Нет подтверждения настроек SPI');
+    const configsAfterFailure = requests.filter(item => item.url === '/api/spi/config').length;
+    failConfig = false;
+    await vm.runInContext('update()', context);
+    assert.equal(requests.filter(item => item.url === '/api/spi/config').length, configsAfterFailure);
+    elements.get('mcu-diag-open').click();
+    assert.equal(elements.get('mcu-diagnostics').open, true);
+    elements.get('mcu-diag-close').click();
+    assert.equal(elements.get('mcu-diagnostics').open, false);
     const beforeDialog = requests.length;
     elements.get('library-open-load').click();
     assert.equal(elements.get('command-library').open, true);
@@ -666,10 +706,10 @@ async function test()
     elements.get('library-name').input();
     elements.get('library-new').click();
     await vm.runInContext('update()', context);
-    assert.match(requests.at(-1).options.body, /^save 64 96\n/);
+    assert.match(requests.at(-1).options.body, /^save 128 96\n/);
     vm.runInContext('nextStorePoll = 0', context);
     await vm.runInContext('update()', context);
-    for (let i = 0; i < 8; ++i)
+    for (let i = 0; i < 16; ++i)
     {
         await vm.runInContext('update()', context);
     }
@@ -699,6 +739,7 @@ async function test()
     assert.equal(elements.get('library-name').value, 'Default');
     assert.equal(elements.get('spi-command-0').value, '9F 00');
     assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeLoadSpi);
+    await vm.runInContext('update()', context); // Apply the loaded SPI settings without TX.
     elements.get('library-select').value = '0';
     const beforeDeleteDialog = requests.length;
     elements.get('library-open-delete').click();
@@ -736,7 +777,7 @@ async function test()
     await vm.runInContext('update()', context);
     vm.runInContext('nextStorePoll = 0', context);
     await vm.runInContext('update()', context);
-    for (let i = 0; i < 8; ++i)
+    for (let i = 0; i < 16; ++i)
     {
         await vm.runInContext('update()', context);
     }
@@ -769,6 +810,7 @@ async function test()
     assert.match(elements.get('spi-message-0').textContent, /I2C.*0x50.*TX: 2.*RX: 2/);
     elements.get('bus-spi').click();
     assert.equal(elements.get('spi-command-0').value, spiDraft);
+    await vm.runInContext('update()', context);
     elements.get('bus-i2c').click();
     assert.equal(elements.get('spi-command-0').value, '00 10');
     assert.equal(elements.get('spi-rx-0').value, 'A0 A0');
@@ -794,7 +836,7 @@ async function test()
     assert.match(requests.at(-1).options.body, /bus=1.*op=1 read=2.*\nlengths=0,0,0,0\n$/);
     vm.runInContext('nextStorePoll = 0', context);
     await vm.runInContext('update()', context);
-    for (let i = 0; i < 8; ++i)
+    for (let i = 0; i < 16; ++i)
     {
         await vm.runInContext('update()', context);
     }
@@ -803,13 +845,16 @@ async function test()
     await vm.runInContext('update()', context);
     assert.equal(vm.runInContext('consoleBus', context), 2);
     assert.equal(elements.get('spi-command-0').disabled, false);
-    elements.get('library-select').value = '0';
+    await vm.runInContext('update()', context);
+    elements.get('library-select').value = '64';
     elements.get('library-load').click();
     await vm.runInContext('update()', context);
     assert.equal(vm.runInContext('consoleBus', context), 1);
     assert.equal(elements.get('i2c-operation').value, '1');
     assert.equal(elements.get('i2c-read').value, '2');
     assert.equal(elements.get('library-name').value, 'I2C read');
+    assert.equal(elements.get('library-select').children.length, 2);
+    assert.equal(elements.get('library-select').children[1].textContent, 'I2C · I2C read');
     elements.get('lang-ja').click();
     assert.equal(elements.get('bus-title').textContent, 'I2C1 · 外部デバイス');
     console.log('Web UI: SPI/I2C switch, isolated drafts, read/write/write-read, named library, NACK/no retry, RU/EN/JA, queue and RTC/ADC/LED passed');

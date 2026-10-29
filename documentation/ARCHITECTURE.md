@@ -4,7 +4,7 @@
 flowchart LR
     Browsers[Браузеры в локальной сети] <--> W5500[W5500: сокеты 0–3]
     W5500 <-->|SPI1| Server[STM32F411: HTTP]
-    Server <-->|SPI1 / CS PA4| Flash[W25Q64JV: 64 набора по четыре команды]
+    Server <-->|SPI1 / CS PA4| Flash[W25Q64JV: 64 SPI + 64 I2C]
     Server <-->|I2C1 / PB8 SCL / PB9 SDA| I2CDevice[Внешнее устройство I2C]
     Server --> ADC[ADC1: PA0 / PA1]
     Server --> LED[Синий LED: PC13]
@@ -37,6 +37,7 @@ flowchart LR
 | GET /api/diagnostics | Снимок W5500 и счётчики драйвера |
 | POST /api/led/on | Включить LED |
 | POST /api/led/off | Выключить LED |
+| POST /api/spi/config | Применить CPOL/CPHA/LSB/CS без передачи данных |
 | POST /api/spi | Транзакция SPI2 и ответ TX/RX |
 | POST /api/i2c | Запись / чтение / repeated START по I2C1 |
 | GET /api/commands | Состояние Flash, четыре текста и общие параметры |
@@ -79,8 +80,8 @@ SPI2 обслуживает внешний стенд: PB13/PB14/PB15, CS PB12.
 для части частот временно включается PLL, затем восстанавливается HSI 16 МГц.
 Обмен SPI1 не выполняется при изменённых частотах; его режим остаётся прежним.
 
-`command_store.c` хранит до 64 именованных наборов по четыре текста с общими
-параметрами в последних 512 Кбайт W25Q64JV, по два сектора на набор. Начальное
+`command_store.c` хранит 64 набора SPI и 64 I2C по четыре текста с общими
+параметрами в последнем 1 Мбайт W25Q64JV, по два сектора на набор. Начальное
 чтение каталога и запись с CRC32, проверкой чтением и последним словом commit
 идут кооперативно через `command_store_poll()`. API: `/api/library` и
 `/api/commands`. [Формат и миграция](COMMAND_LIBRARY_DESIGN.md).

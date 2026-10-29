@@ -13,6 +13,7 @@ static uint8_t state[4];
 static bool hold_tx[4];
 static bool mock_sending[4];
 static uint32_t spi_calls;
+static uint32_t config_calls;
 static bool fail_console;
 static char secondary_input[3][2048];
 static size_t secondary_input_size[3];
@@ -23,7 +24,7 @@ static char input[APP_REQUEST_CAPACITY];
 static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
-static char output[131072];
+static char output[196608];
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
@@ -39,20 +40,20 @@ static bool library_name_ok;
 store_error_t command_library_load(uint32_t id)
 {
     ++library_loads;
-    return id < 64U ? STORE_OK : STORE_NOT_FOUND;
+    return id < COMMAND_LIBRARY_TOTAL ? STORE_OK : STORE_NOT_FOUND;
 }
 
 store_error_t command_library_save(uint32_t id, const char *name, size_t name_size,
                                    const char *body, size_t size)
 {
-    library_name_ok = id == 64U && name_size == 6U && memcmp(name, "日本", 6U) == 0;
+    library_name_ok = id == 128U && name_size == 6U && memcmp(name, "日本", 6U) == 0;
     return command_store_save(body, size);
 }
 
 store_error_t command_library_delete(uint32_t id)
 {
     ++library_deletes;
-    return id < 64U ? STORE_OK : STORE_NOT_FOUND;
+    return id < COMMAND_LIBRARY_TOTAL ? STORE_OK : STORE_NOT_FOUND;
 }
 
 size_t command_library_json(char *json, size_t capacity, uint32_t offset)
@@ -190,6 +191,12 @@ i2c_error_t board_i2c_console(const i2c_command_t *command, uint8_t rx[256], i2c
     return fail_console ? I2C_NACK : I2C_OK;
 }
 
+bool board_spi_console_config(const spi_command_t *command)
+{
+    ++config_calls;
+    return command->mode <= 3U;
+}
+
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
 {
     size_t i;
@@ -279,7 +286,7 @@ int32_t w5500_send_poll(uint8_t socket)
 static void pump(const adc_snapshot_t *adc)
 {
     uint32_t i;
-    for (i = 0U; i < 256U; ++i)
+    for (i = 0U; i < 512U; ++i)
     {
         http_poll(adc);
         if ((state[0] == 0x18U) || (state[0] == W5500_CLOSED))
@@ -569,7 +576,7 @@ int test_entry(void)
     CHECK(library_deletes == 1U && strstr(output, "202 Accepted") != NULL && framing_ok());
     prepare("GET /api/library HTTP/1.1\r\n\r\n");
     {
-        const char body[] = "save 64 6\n日本\n1234";
+        const char body[] = "save 128 6\n日本\n1234";
         input_size = (size_t)snprintf(
             input, sizeof(input),
             "POST /api/library HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
@@ -617,6 +624,33 @@ int test_entry(void)
         fail_console = false;
     }
 
+    {
+        const char body[] = "bus=2 mode=2 hz=1000000 lsb=0 cs_high=0 format=hex\n";
+        const uint32_t calls = spi_calls;
+        const uint32_t configs = config_calls;
+        prepare("GET / HTTP/1.1\r\n\r\n");
+        input_size = (size_t)snprintf(
+            input, sizeof(input),
+            "POST /api/spi/config HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
+            (unsigned long)(sizeof(body) - 1U), body);
+        fragment_size = 1U;
+        for (i = 0U; i + 1U < input_size; ++i)
+        {
+            http_poll(&adc);
+            CHECK(config_calls == configs);
+        }
+        pump(&adc);
+        CHECK(config_calls == configs + 1U && spi_calls == calls && framing_ok());
+        CHECK(strstr(output, "\"applied\":true") != NULL && strstr(output, "\"mode\":2") != NULL);
+        prepare("GET / HTTP/1.1\r\n\r\n");
+        input_size = (size_t)snprintf(input, sizeof(input),
+                                      "POST /api/spi/config HTTP/1.1\r\nX-Device-Control: "
+                                      "1\r\nContent-Length: %lu\r\n\r\n%sAA",
+                                      (unsigned long)(sizeof(body) + 1U), body);
+        pump(&adc);
+        CHECK(config_calls == configs + 1U && spi_calls == calls);
+        CHECK(strstr(output, "400 Bad Request") != NULL && framing_ok());
+    }
     prepare("GET / HTTP/1.1\r\n"); /* Socket 0 holds an incomplete request. */
     strcpy(secondary_input[0], "GET /api/adc HTTP/1.1\r\n\r\n");
     strcpy(secondary_input[1], "GET /api/diagnostics HTTP/1.1\r\n\r\n");

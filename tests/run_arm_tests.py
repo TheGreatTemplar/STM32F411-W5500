@@ -17,7 +17,7 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_AR
 def load_image(path):
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     uc.mem_map(0x08000000, 0x80000)
-    uc.mem_map(0x20000000, 0x100000 if path.name == "store_test.axf" else (0x40000 if path.name == "http_test.axf" else 0x20000))
+    uc.mem_map(0x20000000, 0x200000 if path.name == "store_test.axf" else (0x80000 if path.name == "http_test.axf" else 0x20000))
     uc.mem_map(0x10000000, 0x1000)
     with path.open("rb") as source:
         elf = ELFFile(source)
@@ -26,7 +26,7 @@ def load_image(path):
                 uc.mem_write(segment["p_vaddr"], segment.data())
         symbols = {symbol.name: symbol["st_value"]
                    for symbol in elf.get_section_by_name(".symtab").iter_symbols()}
-    uc.reg_write(UC_ARM_REG_SP, 0x200FF000 if path.name == "store_test.axf" else (0x2003F000 if path.name == "http_test.axf" else 0x2001F000))
+    uc.reg_write(UC_ARM_REG_SP, 0x201FF000 if path.name == "store_test.axf" else (0x2007F000 if path.name == "http_test.axf" else 0x2001F000))
     uc.reg_write(UC_ARM_REG_LR, 0x10000001)
     return uc, symbols
 
@@ -85,6 +85,8 @@ requests = [
     (spi_request.replace(b"/api/spi", b"/api/commands"), 12),
     (spi_request, 10),
     (spi_request.replace(b"/api/spi", b"/api/i2c"), 17),
+    (spi_request.replace(b"/api/spi", b"/api/spi/config"), 18),
+    (b"GET /api/spi/config HTTP/1.1\r\n\r\n", 8),
     (b"GET /api/i2c HTTP/1.1\r\n\r\n", 8),
     (spi_request[:-1], 0),
     (b"GET /api/spi HTTP/1.1\r\n\r\n", 8),
@@ -99,7 +101,7 @@ for request, expected in requests:
     assert result == expected, (request, result, expected)
     count += 1
 for request, route in requests:
-    if route not in {1, 2, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17}:
+    if route not in {1, 2, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}:
         continue
     for length in range(len(request)):
         uc.mem_write(0x20010000, request)
@@ -163,7 +165,7 @@ for mode in range(4):
         assert bytes(uc.mem_read(0x20018400, 4)) == command[20:24]
         assert call(uc, symbols['board_spi_console_duration_us']) > 0
         cr1 = int.from_bytes(uc.mem_read(0x40003800, 4), 'little')
-        assert cr1 & 3 == mode and cr1 & 128 and not cr1 & 64
+        assert cr1 & 3 == mode and cr1 & 128 and cr1 & 64
         assert pclk1_hz // (2 << ((cr1 >> 3) & 7)) == hz
         if system_hz != 16000000:
             assert int.from_bytes(uc.mem_read(symbols['SystemCoreClock'], 4), 'little') == 16000000
@@ -216,6 +218,8 @@ assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 28
 assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
 print('SPI console: 60 mode/rate configurations, PLL switching/restoration, register loopback, limits and invalid input passed')
 from i2c_register_tests import run as run_i2c_register_tests
+from spi_config_tests import run as run_spi_config_tests
+run_spi_config_tests(uc, symbols, call)
 run_i2c_register_tests(uc, symbols, call)
 uc, symbols = load_image(root / "build/w5500_test.axf")
 result = call(uc, symbols["test_entry"])
@@ -227,9 +231,9 @@ assert result == 0, f"HTTP integration mock failed at C source line {result}"
 print("HTTP integration: four clients, stalled connection isolation, ADC/LED/SPI and response framing passed")
 
 uc, symbols = load_image(root / "build/store_test.axf")
-result = call(uc, symbols["test_entry"], timeout=60000000, count=500000000)
+result = call(uc, symbols["test_entry"], timeout=120000000, count=1500000000)
 assert result == 0, f"Flash journal mock failed at C source line {result}"
-print("W25Q64JV: 64 named sets, UTF-8, full catalog, v1 migration, delete/reuse, interrupted writes, CRC and foreign-data protection passed")
+print("W25Q64JV: independent 64+64 banks, UTF-8, full quotas, v1/v2 compatibility, interrupted I2C migration before/after commit, latest-set preservation, CRC and foreign-data protection passed")
 
 # Run the real calendar parser and RTC register code, without a ticking oscillator.
 import json

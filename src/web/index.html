@@ -75,7 +75,7 @@
         .command-message { height: 32px; min-height: 0; line-height: 20px; font-size: 13px; margin: 0; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .library-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; width: 326px; flex: none; height: 36px; }
         .library-controls button { min-width: 0; height: 36px; padding: 5px 8px; font-size: 14px; white-space: nowrap; }
-        #command-library { width: min(680px,calc(100% - 24px)); height: 340px; overflow: auto; scrollbar-gutter: stable; }
+        #command-library { width: min(680px,calc(100% - 24px)); height: 292px; overflow: auto; scrollbar-gutter: stable; }
         .library-header { display: grid; grid-template-columns: minmax(0,1fr) 110px; align-items: center; gap: 12px; height: 44px; }
         .library-header h2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .library-header button { height: 40px; padding: 6px 8px; white-space: nowrap; }
@@ -90,8 +90,8 @@
         #command-library.delete-mode select { background: #fff4cf; color: #332600; border-color: #b78415; }
         #command-library.delete-mode #library-message { color: #332600; }
         #command-library.delete-mode #library-delete, #library-delete-confirm #library-delete-yes { background: #9c4b00; color: #fff; border-color: #9c4b00; }
-        #library-delete-confirm { width: min(520px,calc(100% - 24px)); height: 260px; }
-        #library-delete-question { height: 84px; margin: 20px 0; color: inherit; line-height: 24px; overflow: auto; overflow-wrap: anywhere; }
+        #library-delete-confirm { width: min(520px,calc(100% - 24px)); height: 208px; }
+        #library-delete-question { height: 48px; margin: 20px 0; color: inherit; line-height: 24px; overflow: auto; overflow-wrap: anywhere; }
         .rtc-title { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
         @media (max-width: 520px) { .command-heading { grid-template-columns: minmax(0,1fr); grid-template-rows: 40px 32px; gap: 0; height: 76px; } }
         .store-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 16px; margin-bottom: 16px; height: 44px; }
@@ -117,6 +117,15 @@
         .language-switch { display: flex; align-items: center; gap: 4px; }
         .language-switch button { border: 0; border-radius: 0; background: none; padding: 4px 6px; color: #a6b7c7; font-size: 14px; font-weight: 500; }
         .language-switch button[aria-pressed="true"] { color: #6ed8c4; text-decoration: underline; text-underline-offset: 4px; }
+        .diagnostic-buttons { display: grid; gap: 8px; width: 230px; }
+        .diagnostic-buttons button { width: 100%; padding: 8px 10px; font-size: 14px; }
+        #mcu-diagnostics { width: min(680px,calc(100% - 24px)); height: 230px; }
+        #mcu-diagnostics .led-control { margin-top: 18px; }
+        #mcu-diagnostics #led-message { display: block; height: 21px; }
+        .console-state { display: flex; align-items: center; gap: 16px; height: 32px; margin: 12px 0; }
+        .console-state p { margin: 0; }
+        #spi-config-status { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .rtc-control + .channels { margin-top: 20px; }
         .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
         dialog { width: min(1100px,calc(100% - 24px)); max-height: 90vh; padding: 20.4px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 18px; }
         dialog::backdrop { background: #050b13bb; }
@@ -135,8 +144,17 @@
     <main>
         <header>
             <div><div class="eyebrow">BLACK PILL / W5500</div><h1>Монитор STM32F411</h1></div>
-            <div class="toolbar"><nav class="language-switch" aria-label="Выбор языка"><button type="button" id="lang-en" lang="en" aria-pressed="false">Eng</button><button type="button" id="lang-ru" lang="ru" aria-pressed="true">Рус</button><button type="button" id="lang-ja" lang="ja" aria-pressed="false">日本語</button></nav><div id="status" role="status">Подключение…</div><button type="button" id="diag-open">Диагностика W5500</button></div>
+            <div class="toolbar"><nav class="language-switch" aria-label="Выбор языка"><button type="button" id="lang-en" lang="en" aria-pressed="false">Eng</button><button type="button" id="lang-ru" lang="ru" aria-pressed="true">Рус</button><button type="button" id="lang-ja" lang="ja" aria-pressed="false">日本語</button></nav><div id="status" role="status">Подключение…</div><div class="diagnostic-buttons"><button type="button" id="diag-open">Диагностика W5500</button><button type="button" id="mcu-diag-open">Диагностика STM32F411</button></div></div>
         </header>
+        <section class="rtc-control" aria-label="Часы микроконтроллера">
+            <div class="rtc-header"><div class="rtc-title"><h2>Часы стенда · RTC / LSE</h2><span id="rtc-message" role="status">Запуск LSE…</span></div><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
+            <div class="rtc-settings">
+                <label>Дата<input type="date" id="rtc-input-date" min="2000-01-01" max="2099-12-31"></label>
+                <label>Время<input type="time" id="rtc-input-time" step="1"></label>
+                <button type="button" id="rtc-set" disabled>Установить</button>
+                <button type="button" id="rtc-sync" disabled>Синхронизировать с ПК</button>
+            </div>
+        </section>
         <section class="channels" aria-label="Каналы АЦП">
             <article>
                 <div class="channel-header"><h2>Канал 1</h2><div class="channel-value"><span class="voltage" id="v0">—</span><span class="unit"> В</span></div></div>
@@ -156,19 +174,6 @@
             <div>Время работы<strong id="uptime">—</strong></div>
             <div>Измерений<strong id="samples">—</strong></div>
             <div>Опорное напряжение<strong id="vref">—</strong></div>
-        </section>
-        <section class="rtc-control" aria-label="Часы микроконтроллера">
-            <div class="rtc-header"><div class="rtc-title"><h2>Часы стенда · RTC / LSE</h2><span id="rtc-message" role="status">Запуск LSE…</span></div><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
-            <div class="rtc-settings">
-                <label>Дата<input type="date" id="rtc-input-date" min="2000-01-01" max="2099-12-31"></label>
-                <label>Время<input type="time" id="rtc-input-time" step="1"></label>
-                <button type="button" id="rtc-set" disabled>Установить</button>
-                <button type="button" id="rtc-sync" disabled>Синхронизировать с ПК</button>
-            </div>
-        </section>
-        <section class="led-control" aria-label="Управление светодиодом">
-            <div class="led-header"><h2>Синий светодиод · PC13</h2><div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div><span id="led-state" role="status">Состояние: —</span></div>
-            <p id="led-message" role="status"></p>
         </section>
         <section class="spi-control" aria-label="Консоль шин">
             <div class="console-toolbar">
@@ -202,7 +207,7 @@
                 <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label></div>
             </div>
             <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
-            <p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p>
+            <div class="console-state"><p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p><span class="hint spi-only" id="spi-config-status" role="status"></span></div>
             <div class="store-bar"><span id="store-status" role="status">Проверка W25Q64JV…</span><span id="library-status" class="hint" role="status"></span></div>
             <div class="command-card">
                 <div class="command-heading"><label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label><p id="spi-message-0" class="command-message" role="status"></p></div>
@@ -237,7 +242,7 @@
     <dialog id="command-library" aria-labelledby="library-title">
         <div class="library-header"><h2 id="library-title">Библиотека команд</h2><button type="button" id="library-close">Закрыть</button></div>
         <div class="library-fields">
-            <label id="library-select-row">Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="64">Новый набор</option></select></label>
+            <label id="library-select-row">Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="128">Новый набор</option></select></label>
             <label id="library-name-row" hidden>Имя<input type="text" id="library-name" maxlength="64" value="Default" aria-label="Имя набора, до 32 символов"></label>
         </div>
         <div class="library-actions">
@@ -252,6 +257,13 @@
         <h2 id="library-delete-title">Подтверждение удаления</h2>
         <p id="library-delete-question">Удалить набор <strong id="library-delete-name" data-user-text></strong> из Flash?</p>
         <div class="library-actions"><button type="button" id="library-delete-no" autofocus>Отмена</button><button type="button" id="library-delete-yes">Удалить</button></div>
+    </dialog>
+    <dialog id="mcu-diagnostics" aria-labelledby="mcu-diag-title">
+        <div class="library-header"><h2 id="mcu-diag-title">Диагностика STM32F411</h2><button type="button" id="mcu-diag-close">Закрыть</button></div>
+        <section class="led-control" aria-label="Управление светодиодом">
+            <div class="led-header"><h2>Синий светодиод · PC13</h2><div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div><span id="led-state" role="status">Состояние: —</span></div>
+            <p id="led-message" role="status"></p>
+        </section>
     </dialog>
     <dialog id="diagnostics" aria-labelledby="diag-title">
         <div class="led-header"><h2 id="diag-title">Диагностика W5500</h2><button type="button" id="diag-close">Закрыть</button></div>
@@ -274,6 +286,11 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Перенос наборов I2C…": "Migrating I2C sets…",
+            "Диагностика STM32F411": "STM32F411 diagnostics",
+            "Применение настроек SPI…": "Applying SPI settings…",
+            "Настройки SPI применены": "SPI settings applied",
+            "Нет подтверждения настроек SPI": "SPI settings not confirmed",
             "Загрузка набора": "Load set",
             "Сохранение набора": "Save set",
             "Удаление набора": "Delete set",
@@ -514,6 +531,11 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Перенос наборов I2C…": "I2C セットを移行中…",
+            "Диагностика STM32F411": "STM32F411 診断",
+            "Применение настроек SPI…": "SPI 設定を適用中…",
+            "Настройки SPI применены": "SPI 設定を適用しました",
+            "Нет подтверждения настроек SPI": "SPI 設定を確認できません",
             "Загрузка набора": "セットの読み込み",
             "Сохранение набора": "セットの保存",
             "Удаление набора": "セットの削除",
@@ -844,6 +866,8 @@
         const pendingSpi = [];
         let activeSpi = null;
         let spiBusy = false;
+        let spiConfigBusy = false;
+        let pendingSpiConfig = null;
         let spiSequence = 0;
         let updateRunning = false;
         let updateTimer = null;
@@ -933,8 +957,9 @@
         let pendingLibrary = null;
         let libraryBusy = false;
         let librarySets = [];
-        let selectedSet = 64;
+        let selectedSet = 128;
         let libraryLoaded = false;
+        let libraryStats = {blocked_spi: 0, blocked_i2c: 0};
         let pendingSave = null;
         let pendingStoreLoad = true;
         let storeWaiting = false;
@@ -1029,7 +1054,7 @@
         }
         function busButtons()
         {
-            const busy = spiBusy || pendingSpi.length > 0 || saveBusy || libraryBusy || storeWaiting;
+            const busy = spiBusy || spiConfigBusy || pendingSpiConfig !== null || pendingSpi.length > 0 || saveBusy || libraryBusy || storeWaiting;
             get('bus-spi').disabled = busy;
             get('bus-i2c').disabled = busy;
         }
@@ -1082,7 +1107,7 @@
             }
             else
             {
-                selectedSet = 64;
+                selectedSet = 128;
                 draftDirty = false;
                 get('library-name').value = 'I2C';
                 get('spi-format').value = 'hex';
@@ -1121,10 +1146,11 @@
                 get('spi-command-' + i).setAttribute('aria-label', translate(commandLabel));
                 setText(get('rx-hint-' + i), bus === 2 ? 'Байты с MISO, принятые во время этой передачи' : 'Байты, прочитанные от устройства');
             }
-            get('library-select').value = String(selectedSet);
+            renderLibrary();
             i2cMode();
             libraryButtons();
             spiButtons();
+            queueSpiConfig();
         }
         function i2cSettingsError()
         {
@@ -1166,6 +1192,20 @@
                 i2cMode();
                 markDirty();
             });
+        }
+        function queueSpiConfig()
+        {
+            if (consoleBus !== 2)
+            {
+                return;
+            }
+            pendingSpiConfig = {mode: spiMode(), hz: Number(get('spi-hz').value),
+                lsb: get('spi-lsb').checked ? 1 : 0, cs_high: get('spi-cs-high').checked ? 1 : 0};
+            pendingSpiConfig.body = 'bus=2 mode=' + pendingSpiConfig.mode + ' hz=' + pendingSpiConfig.hz +
+                ' lsb=' + pendingSpiConfig.lsb + ' cs_high=' + pendingSpiConfig.cs_high + ' format=hex\n';
+            setText(get('spi-config-status'), 'Применение настроек SPI…');
+            busButtons();
+            wakeUpdate();
         }
         function settingsLine()
         {
@@ -1299,7 +1339,7 @@
                 return;
             }
             const snapshot = settingsLine() + '\nlengths=' + texts.map((text) => text.length).join(',') + '\n' + texts.join('');
-            pendingSave = 'save ' + (asNew ? 64 : selectedSet) + ' ' + new TextEncoder().encode(name).length + '\n' + name + '\n' + snapshot;
+            pendingSave = 'save ' + (asNew ? 128 : selectedSet) + ' ' + new TextEncoder().encode(name).length + '\n' + name + '\n' + snapshot;
             saveFingerprint = draftSnapshot();
             saveBusy = true;
             libraryButtons();
@@ -1344,6 +1384,7 @@
                 markDirty();
                 draftDirty = false;
                 i2cMode();
+                queueSpiConfig();
             }
             const completed = saveBusy && !data.busy && !data.scanning;
             storeWaiting = data.busy || data.scanning;
@@ -1353,7 +1394,7 @@
             }
             if (data.scanning)
             {
-                setText(get('store-status'), 'Чтение библиотеки: ' + data.scan + ' / 64');
+                setText(get('store-status'), data.migrating ? 'Перенос наборов I2C…' : 'Чтение библиотеки: ' + data.scan + ' / 128');
                 libraryButtons();
                 return;
             }
@@ -1374,7 +1415,7 @@
             }
             if (completed && data.save_ok)
             {
-                selectedSet = data.has_saved ? data.id : 64;
+                selectedSet = data.has_saved ? data.id : 128;
                 libraryLoaded = false;
             }
             if (flashReady && !libraryLoaded && !pendingLibrary && !libraryBusy)
@@ -1392,8 +1433,8 @@
             const busy = saveBusy || storeWaiting || libraryBusy || !flashReady;
             get('store-save').disabled = busy;
             get('library-new').disabled = busy;
-            get('library-load').disabled = busy || Number(get('library-select').value) >= 64;
-            get('library-delete').disabled = busy || Number(get('library-select').value) >= 64;
+            get('library-load').disabled = busy || Number(get('library-select').value) >= 128;
+            get('library-delete').disabled = busy || Number(get('library-select').value) >= 128;
         }
         function libraryCatalog(data, offset)
         {
@@ -1412,13 +1453,20 @@
                 pendingLibrary = {kind: 'list', offset: data.next};
                 return;
             }
+            libraryStats = data;
+            renderLibrary();
+            libraryLoaded = true;
+        }
+        function renderLibrary()
+        {
+            const visibleSets = librarySets.filter(item => (item.bus || 2) === consoleBus);
             const selection = get('library-select').value;
             get('library-select').replaceChildren();
             const empty = document.createElement('option');
-            empty.value = '64';
+            empty.value = '128';
             setText(empty, 'Новый набор');
             get('library-select').append(empty);
-            for (const item of librarySets)
+            for (const item of visibleSets)
             {
                 const option = document.createElement('option');
                 option.value = String(item.id);
@@ -1426,10 +1474,9 @@
                 option.textContent = (item.bus === 1 ? 'I2C' : 'SPI') + ' · ' + item.name;
                 get('library-select').append(option);
             }
-            get('library-select').value = librarySets.some((item) => item.id === selectedSet) ? String(selectedSet) :
-                (librarySets.some((item) => String(item.id) === selection) ? selection : '64');
-            setText(get('library-status'), 'Наборов: ' + data.used + ' / 64 · недоступно: ' + data.blocked);
-            libraryLoaded = true;
+            get('library-select').value = visibleSets.some((item) => item.id === selectedSet) ? String(selectedSet) :
+                (visibleSets.some((item) => String(item.id) === selection) ? selection : '128');
+            setText(get('library-status'), 'Наборов: ' + visibleSets.length + ' / 64 · недоступно: ' + ((consoleBus === 2 ? libraryStats.blocked_spi : libraryStats.blocked_i2c) || 0));
         }
         let deleteTarget = null;
         function queueLibrary(kind, confirmedId = null)
@@ -1439,7 +1486,7 @@
                 return;
             }
             const id = confirmedId === null ? Number(get('library-select').value) : confirmedId;
-            if (id >= 64 || !Number.isInteger(id))
+            if (id >= 128 || !Number.isInteger(id))
             {
                 return;
             }
@@ -1553,7 +1600,11 @@
                 }
             });
             field.addEventListener('input', (event) => commandInput(i, event));
-            get('spi-mode-' + i).addEventListener('change', markDirty);
+            get('spi-mode-' + i).addEventListener('change', () =>
+            {
+                markDirty();
+                queueSpiConfig();
+            });
         }
         for (const id of ['spi-hz', 'spi-format', 'spi-msb', 'spi-lsb', 'spi-cs-low', 'spi-cs-high'])
         {
@@ -1567,6 +1618,10 @@
                     spiMessage(i, error, !!error);
                 }
                 markDirty();
+                if (id !== 'spi-format')
+                {
+                    queueSpiConfig();
+                }
             });
         }
         get('store-save').addEventListener('click', () => queueSave(false));
@@ -1637,6 +1692,8 @@
             get('diagnostics').showModal();
             queueDiagnostics();
         });
+        get('mcu-diag-open').addEventListener('click', () => get('mcu-diagnostics').showModal());
+        get('mcu-diag-close').addEventListener('click', () => get('mcu-diagnostics').close());
         get('diag-close').addEventListener('click', () => get('diagnostics').close());
         get('diag-refresh').addEventListener('click', queueDiagnostics);
         function showLed(on)
@@ -1702,15 +1759,22 @@
                 spiMessage(spi.index, '№' + spi.sequence + ' · передача, ожидается подтверждение…');
                 spiButtons();
             }
-            const diagnostics = clock === null && command === null && spi === null && pendingDiagnostics;
-            const save = clock === null && command === null && spi === null && !diagnostics ? pendingSave : null;
+            const config = clock === null && command === null && spi === null ? pendingSpiConfig : null;
+            if (config !== null)
+            {
+                pendingSpiConfig = null;
+                spiConfigBusy = true;
+                busButtons();
+            }
+            const diagnostics = clock === null && command === null && spi === null && config === null && pendingDiagnostics;
+            const save = clock === null && command === null && spi === null && config === null && !diagnostics ? pendingSave : null;
             if (save !== null)
             {
                 pendingSave = null;
             }
-            const storage = clock === null && command === null && spi === null && !diagnostics && save === null &&
+            const storage = clock === null && command === null && spi === null && config === null && !diagnostics && save === null &&
                 (pendingStoreLoad || storeWaiting) && Date.now() >= nextStorePoll;
-            const library = clock === null && command === null && spi === null && !diagnostics && save === null && !storage ? pendingLibrary : null;
+            const library = clock === null && command === null && spi === null && config === null && !diagnostics && save === null && !storage ? pendingLibrary : null;
             if (library !== null)
             {
                 pendingLibrary = null;
@@ -1730,6 +1794,25 @@
             let haveFreshState = false;
             try
             {
+                if (config !== null)
+                {
+                    const reply = await fetch('/api/spi/config', {method: 'POST',
+                        headers: {'X-Device-Control': '1', 'Content-Type': 'text/plain'}, body: config.body, signal: controller.signal});
+                    if (!reply.ok)
+                    {
+                        throw new Error('SPI configuration rejected');
+                    }
+                    const result = await reply.json();
+                    if (!result.applied || ['mode','hz','lsb','cs_high'].some(key => result[key] !== config[key]))
+                    {
+                        throw new Error('SPI configuration not confirmed');
+                    }
+                    if (pendingSpiConfig === null)
+                    {
+                        setText(get('spi-config-status'), 'Настройки SPI применены');
+                    }
+                    return;
+                }
                 if (clock !== null)
                 {
                     const text = clock.sync ? localComputerTime() : clock.text;
@@ -1881,6 +1964,14 @@
             }
             catch (error)
             {
+                if (config !== null)
+                {
+                    if (pendingSpiConfig === null)
+                    {
+                        setText(get('spi-config-status'), 'Нет подтверждения настроек SPI');
+                    }
+                    return;
+                }
                 if (clock !== null)
                 {
                     setText(get('rtc-message'), 'Нет подтверждения установки RTC. Проверь показания; автоматического повтора нет.');
@@ -1938,6 +2029,11 @@
             finally
             {
                 clearTimeout(timeout);
+                if (config !== null)
+                {
+                    spiConfigBusy = false;
+                    busButtons();
+                }
                 if (library !== null)
                 {
                     libraryBusy = false;
@@ -1967,7 +2063,7 @@
                     enableLedButtons(true);
                 }
                 updateRunning = false;
-                const pending = pendingSpi.length > 0 || pendingRtc !== null || pendingLed !== null || pendingDiagnostics || pendingSave !== null || pendingLibrary !== null;
+                const pending = pendingSpiConfig !== null || pendingSpi.length > 0 || pendingRtc !== null || pendingLed !== null || pendingDiagnostics || pendingSave !== null || pendingLibrary !== null;
                 scheduleUpdate(pending ? 0 : 250);
             }
         }
