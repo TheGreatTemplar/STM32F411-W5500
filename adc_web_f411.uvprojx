@@ -416,6 +416,16 @@
               <FilePath>.\src\board.c</FilePath>
             </File>
             <File>
+              <FileName>usart_console.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\usart_console.c</FilePath>
+            </File>
+            <File>
+              <FileName>usart_console.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\usart_console.h</FilePath>
+            </File>
+            <File>
               <FileName>board.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\src\board.h</FilePath>

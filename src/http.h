@@ -29,7 +29,9 @@ typedef enum
     HTTP_SETTINGS,
     HTTP_SAVE_SETTINGS,
     HTTP_APPLY_SETTINGS,
-    HTTP_MCU
+    HTTP_MCU,
+    HTTP_USART,
+    HTTP_USART_CONTROL
 } http_route_t;
 
 typedef struct

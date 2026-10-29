@@ -148,6 +148,25 @@ http_route_t http_parse(const char *request, size_t size)
         return HTTP_BAD_REQUEST;
     }
     path_size = (size_t)(version - path);
+    if (!post && path_size >= 16U && memcmp(path, "/api/usart?from=", 16U) == 0)
+    {
+        size_t p;
+        uint32_t cursor = 0U;
+        if (path_size == 16U)
+        {
+            return HTTP_BAD_REQUEST;
+        }
+        for (p = 16U; p < path_size; ++p)
+        {
+            const uint32_t digit = (uint32_t)(path[p] - '0');
+            if (digit > 9U || cursor > (UINT32_MAX - digit) / 10U)
+            {
+                return HTTP_BAD_REQUEST;
+            }
+            cursor = cursor * 10U + digit;
+        }
+        return HTTP_USART;
+    }
     if (!post && path_size == 13U && memcmp(path, "/api/settings", 13U) == 0)
     {
         return HTTP_SETTINGS;
@@ -164,7 +183,8 @@ http_route_t http_parse(const char *request, size_t size)
     {
         return HTTP_COMMANDS;
     }
-    if ((path_size == 19U && memcmp(path, "/api/settings/apply", 19U) == 0) ||
+    if ((path_size == 10U && memcmp(path, "/api/usart", 10U) == 0) ||
+        (path_size == 19U && memcmp(path, "/api/settings/apply", 19U) == 0) ||
         (path_size == 13U && memcmp(path, "/api/settings", 13U) == 0) ||
         ((path_size == 11U) && (memcmp(path, "/api/led/on", 11U) == 0)) ||
         ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)) ||
@@ -176,8 +196,8 @@ http_route_t http_parse(const char *request, size_t size)
         ((path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0)))
     {
         size_t body_size;
-        const bool payload = (path_size == 19U) || (path_size == 15U) || (path_size == 8U) ||
-                             (path_size == 13U) ||
+        const bool payload = (path_size == 10U) || (path_size == 19U) || (path_size == 15U) ||
+                             (path_size == 8U) || (path_size == 13U) ||
                              (path_size == 12U && memcmp(path, "/api/library", 12U) == 0);
         if (!post)
         {
@@ -199,6 +219,10 @@ http_route_t http_parse(const char *request, size_t size)
         }
         if (payload)
         {
+            if (path_size == 10U)
+            {
+                return HTTP_USART_CONTROL;
+            }
             if (path_size == 19U)
             {
                 return HTTP_APPLY_SETTINGS;

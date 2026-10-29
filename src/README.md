@@ -17,6 +17,10 @@
 | `web/index.html` | Исходник страницы |
 | `web_page.h` | Встроенные UTF-8 байты страницы, генерируются скриптом |
 
-Используются C99, CMSIS и регистры MCU. Аппаратные IRQ, кроме SysTick, в тесте
-не включаются; их векторы указывают на Default_Handler. При добавлении IRQ
+USART1 реализован в `usart_console.c`: PA9/PA10 AF7, RX DMA2 Stream2 circular,
+TX DMA2 Stream7, оба channel4. Векторы USART1 и DMA2 Stream2 подключены в startup.
+USART блокирует передачу SPI2, пока включён, чтобы сохранить APB2/BRR.
+
+Используются C99, CMSIS и регистры MCU. Включены SysTick, USART1 и DMA2 Stream2;
+остальные IRQ не включаются, их векторы указывают на Default_Handler. При добавлении IRQ
 потребуется заменить соответствующие векторы в startup.

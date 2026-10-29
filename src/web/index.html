@@ -9,10 +9,10 @@
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
         .console-toolbar { display: flex; justify-content: space-between; align-items: start; gap: 16px; height: 64px; margin-bottom: 8px; overflow-x: auto; overflow-y: hidden; }
-        .bus-panel { flex: 1; min-width: 298px; display: grid; gap: 6px; }
+        .bus-panel { flex: 1; min-width: 400px; display: grid; gap: 6px; }
         .library-panel { width: 326px; flex: none; display: grid; gap: 6px; }
-        .bus-switch { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); width: 298px; flex: none; height: 36px; gap: 8px; }
-        #bus-usart { cursor: not-allowed; }
+        .bus-switch { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); width: 400px; flex: none; height: 36px; gap: 8px; }
+        #bus-i2s { cursor: not-allowed; }
         .bus-switch button { height: 36px; padding: 5px 8px; font-size: 14px; }
         .bus-switch button[aria-pressed="true"] { color: #101923; background: #6ed8c4; border-color: #6ed8c4; }
         .i2c-options input, .i2c-options select { height: 30px; min-width: 0; padding: 3px 7px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 6px; font: inherit; }
@@ -237,6 +237,14 @@
         #about-dialog { width: min(760px,calc(100% - 24px)); }
         #about-info { grid-template-columns: 1fr; }
         #about-info strong { font-family: ui-monospace,monospace; font-size: 13px; }
+        .uart-settings { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 12px 0; }
+        .uart-settings label { display: grid; gap: 4px; font-size: 13px; width: 100px; }
+        .uart-settings button { width: 180px; font-size: 13px; padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+        .uart-settings select { min-width: 70px; padding-left: 8px; padding-right: 8px; }
+        #uart-message { height: 32px; margin: 8px 0; padding: 6px 10px; font-size: 13px; line-height: 20px; overflow: auto; }
+        #uart-eol-label { width: 140px; }
+        #uart-rx { height: 140px; min-height: 30px; font-size: 13px; padding: 5px 8px; }
+        #uart-state { height: 44px; min-height: 44px; overflow: auto; font-size: 13px; margin: 8px 0; }
     </style>
 </head>
 <body>
@@ -261,14 +269,33 @@
         </section>
         <section class="spi-control" aria-label="Консоль шин">
             <div class="console-toolbar">
-                <div class="bus-panel"><div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button><button type="button" id="bus-usart" aria-pressed="false" disabled title="Будет добавлено позже">USART</button></div>
-                <div class="console-state"><p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p><span class="hint spi-only" id="spi-config-status" role="status"></span></div></div>
-                <div class="library-panel"><div class="library-controls">
+                <div class="bus-panel"><div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button><button type="button" id="bus-usart" aria-pressed="false">USART</button><button type="button" id="bus-i2s" aria-pressed="false" disabled title="Будет добавлено позже">I2S</button></div>
+                <div class="console-state" id="sync-state"><p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p><span class="hint spi-only" id="spi-config-status" role="status"></span></div></div>
+                <div class="library-panel" id="bus-library"><div class="library-controls">
                     <button type="button" id="library-open-load">Загрузить</button>
                     <button type="button" id="library-open-save">Сохранить</button>
                     <button type="button" id="library-open-delete">Удалить</button>
                 </div><span id="library-status" class="hint" role="status"></span></div>
             </div>
+            <section id="uart-console" hidden aria-label="Тест USART">
+                <div class="spi-title"><h2>USART1 · тест</h2><p class="hint">PA9 TX · PA10 RX · логика 3,3 В · общий GND</p></div>
+                <div class="uart-settings">
+                    <label>Скорость, бод<select id="uart-baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option selected>115200</option><option>230400</option><option>460800</option><option>500000</option><option>1000000</option></select></label>
+                    <label>Биты данных<select id="uart-bits"><option selected>8</option><option>7</option></select></label>
+                    <label>Чётность<select id="uart-parity"><option value="0">None</option><option value="1">Odd</option><option value="2">Even</option></select></label>
+                    <label>Стоп-биты<select id="uart-stop"><option>1</option><option>2</option></select></label>
+                    <button type="button" id="uart-start">Включить / применить</button><button type="button" id="uart-off">Отключить USART</button>
+                </div>
+                <p class="hint">Пока USART включён, передача SPI заблокирована. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.</p>
+                <p id="uart-state" role="status">Ожидание данных…</p>
+                <div class="uart-settings"><label>Формат<select id="uart-format"><option value="0">HEX</option><option value="1">ASCII</option></select></label><label id="uart-eol-label">Окончание строки<select id="uart-eol"><option value="0">None</option><option value="1">CR</option><option value="2">LF</option><option value="3">CRLF</option></select></label><button type="button" id="uart-clear">Очистить журнал</button></div>
+                <div class="result-title"><span>TX · до 256 байт</span><span class="hint">Передача через DMA</span></div>
+                <p id="uart-message" role="status"></p>
+                <div class="command-editor"><textarea rows="1" id="uart-command" maxlength="768" spellcheck="false" aria-label="Команда USART">55 AA 00 FF</textarea><button type="button" id="uart-send" disabled><span>Передать</span><span class="send-count" id="uart-count">4 Б</span></button></div>
+                <div class="result-title"><span>RX · журнал</span><span class="hint">Последние 8192 символа · без сохранения во Flash</span></div>
+                <textarea id="uart-rx" readonly aria-label="Журнал USART" data-user-text></textarea>
+            </section>
+            <div id="sync-console">
             <div class="spi-title"><h2 id="bus-title">SPI2 · внешнее устройство</h2><p class="hint" id="bus-pins">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p></div>
             <div class="spi-settings">
                 <fieldset class="spi-only"><legend>Режим SPI</legend>
@@ -315,6 +342,7 @@
                 <div class="command-editor"><textarea rows="1" id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3"><span id="spi-send-label-3">Передать</span><span class="send-count" id="spi-send-count-3">0 Б</span></button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-3" readonly aria-label="TX команды 4">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-3">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
+            </div>
             </div>
         </section>
 
@@ -423,10 +451,45 @@
         const get = (id) => document.getElementById(id);
         let language = 'ru';
         let consoleBus = 2;
+        let uartVisible = false;
+        let uartDeviceEnabled = false;
         const busDrafts = {};
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Тест USART": "USART test",
+            "USART1 · тест": "USART1 · test",
+            "PA9 TX · PA10 RX · логика 3,3 В · общий GND": "PA9 TX · PA10 RX · 3.3 V logic · common GND",
+            "Скорость, бод": "Baud rate",
+            "Биты данных": "Data bits",
+            "Чётность": "Parity",
+            "Стоп-биты": "Stop bits",
+            "Включить / применить": "Enable / apply",
+            "Отключить USART": "Disable USART",
+            "Окончание строки": "Line ending",
+            "Очистить журнал": "Clear log",
+            "TX · до 256 байт": "TX · up to 256 bytes",
+            "Передача через DMA": "DMA transmission",
+            "RX · журнал": "RX · log",
+            "Последние 8192 символа · без сохранения во Flash": "Last 8192 characters · not stored in Flash",
+            "Команда USART": "USART command",
+            "Журнал USART": "USART log",
+            "Пока USART включён, передача SPI заблокирована. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "SPI transmission is blocked while USART is enabled. Connect PA9 to PA10 for loopback: transmitted bytes appear in RX. Do not connect RS-232 directly.",
+            "Проверь параметры USART и данные команды.": "Check USART settings and command data.",
+            "USART занят передачей.": "USART is transmitting.",
+            "Сначала включи USART.": "Enable USART first.",
+            "Ошибка DMA USART. Включи USART заново.": "USART DMA error. Enable USART again.",
+            "Ошибка USART": "USART error",
+            "Нет связи с USART.": "USART connection unavailable.",
+            "Нет подтверждения операции USART. Не повторяй передачу автоматически.": "USART operation not confirmed. Do not retransmit automatically.",
+            "USART включён": "USART enabled",
+            "USART отключён": "USART disabled",
+            "Для 7 бит выбери Odd или Even.": "Choose Odd or Even for 7 data bits.",
+            "Введи от 1 до 256 байт. HEX — полные пары, ASCII — 1…127.": "Enter 1 to 256 bytes. HEX requires byte pairs; ASCII accepts 1 to 127.",
+            "Передача принята DMA. Завершение — по TX и статусу USART.": "DMA accepted the transmission. Check TX count and USART status for completion.",
+            "Параметры USART применены.": "USART settings applied.",
+            "HEX: разрешены только 0–9, A–F. До 256 байт.": "HEX: only 0–9 and A–F allowed. Up to 256 bytes.",
+            "Отключи USART перед передачей SPI.": "Disable USART before transmitting over SPI.",
             "Память стенда": "Bench storage",
             "О программе": "About",
             "Внешняя Flash · W25Q64JV": "External Flash · W25Q64JV",
@@ -745,6 +808,39 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Тест USART": "USARTテスト",
+            "USART1 · тест": "USART1 · テスト",
+            "PA9 TX · PA10 RX · логика 3,3 В · общий GND": "PA9 TX · PA10 RX · 3.3 Vロジック · 共通GND",
+            "Скорость, бод": "ボーレート",
+            "Биты данных": "データビット",
+            "Чётность": "パリティ",
+            "Стоп-биты": "ストップビット",
+            "Включить / применить": "有効化 / 適用",
+            "Отключить USART": "USARTを無効化",
+            "Окончание строки": "行末",
+            "Очистить журнал": "ログを消去",
+            "TX · до 256 байт": "TX · 最大256バイト",
+            "Передача через DMA": "DMA送信",
+            "RX · журнал": "RX · ログ",
+            "Последние 8192 символа · без сохранения во Flash": "最新8192文字 · Flashには保存しません",
+            "Команда USART": "USARTコマンド",
+            "Журнал USART": "USARTログ",
+            "Пока USART включён, передача SPI заблокирована. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "USARTが有効な間、SPI送信はできません。PA9とPA10を接続すると送信データをRXで確認できます。RS-232を直接接続しないでください。",
+            "Проверь параметры USART и данные команды.": "USART設定と送信データを確認してください。",
+            "USART занят передачей.": "USARTは送信中です。",
+            "Сначала включи USART.": "先にUSARTを有効にしてください。",
+            "Ошибка DMA USART. Включи USART заново.": "USART DMAエラーです。再度有効にしてください。",
+            "Ошибка USART": "USARTエラー",
+            "Нет связи с USART.": "USARTに接続できません。",
+            "Нет подтверждения операции USART. Не повторяй передачу автоматически.": "USART操作を確認できません。自動的に再送信しないでください。",
+            "USART включён": "USART有効",
+            "USART отключён": "USART無効",
+            "Для 7 бит выбери Odd или Even.": "7ビットではOddまたはEvenを選択してください。",
+            "Введи от 1 до 256 байт. HEX — полные пары, ASCII — 1…127.": "1〜256バイトを入力してください。HEXは2桁単位、ASCIIは1〜127です。",
+            "Передача принята DMA. Завершение — по TX и статусу USART.": "DMAが送信を受け付けました。TXとUSART状態で完了を確認してください。",
+            "Параметры USART применены.": "USART設定を適用しました。",
+            "HEX: разрешены только 0–9, A–F. До 256 байт.": "HEXは0〜9、A〜Fのみ、最大256バイトです。",
+            "Отключи USART перед передачей SPI.": "SPI送信の前にUSARTを無効にしてください。",
             "Память стенда": "装置のストレージ",
             "О программе": "このソフトについて",
             "Внешняя Flash · W25Q64JV": "外部Flash · W25Q64JV",
@@ -1479,8 +1575,9 @@
         {
             return consoleBus === 1 && get('i2c-operation').value === '1' ? '' : get('spi-command-' + index).value;
         }
-        get('bus-spi').addEventListener('click', () => switchConsole(2));
-        get('bus-i2c').addEventListener('click', () => switchConsole(1));
+        get('bus-spi').addEventListener('click', () => showBus(2));
+        get('bus-i2c').addEventListener('click', () => showBus(1));
+        get('bus-usart').addEventListener('click', () => showBus(3));
         for (const id of ['i2c-hz','i2c-address','i2c-operation','i2c-read'])
         {
             get(id).addEventListener('input', () =>
@@ -2311,7 +2408,8 @@
                     }
                     if (!reply.ok)
                     {
-                        throw new Error('SPI: ' + (await reply.text()).trim());
+                        const message = (await reply.text()).trim();
+                        throw new Error(message === 'Stop USART before SPI transfer' ? 'Отключи USART перед передачей SPI.' : 'SPI: ' + message);
                     }
                     const result = await reply.json();
                     get('spi-tx-' + spi.index).value = result.tx.match(/../g).join(' ');
@@ -2766,6 +2864,264 @@
             }
         });
 
+        let uartCursor = 0;
+        let uartWriting = false;
+        let uartPolling = false;
+        let uartTimer = null;
+        let uartTxBusy = false;
+        let uartLast = '55 AA 00 FF';
+        let uartLost = 0;
+        let uartConfigLoaded = false;
+        let uartOperation = 0;
+        function uartMessage(text, error = false)
+        {
+            get('uart-message').className = error ? 'input-error' : '';
+            setText(get('uart-message'), text);
+        }
+        function uartButtons()
+        {
+            get('uart-start').disabled = uartWriting || uartTxBusy;
+            get('uart-off').disabled = uartWriting || uartTxBusy;
+            get('uart-send').disabled = uartWriting || uartTxBusy || !uartDeviceEnabled;
+        }
+        function uartCount()
+        {
+            const text = get('uart-command').value;
+            const ascii = get('uart-format').value === '1';
+            const raw = text.replace(/\s/g, '');
+            const valid = ascii ? /^[\x01-\x7F]*$/.test(text) && text.length <= 256 :
+                /^[0-9a-fA-F]*$/.test(raw) && raw.length % 2 === 0 && raw.length <= 512;
+            let count = ascii ? text.length : raw.length / 2;
+            count += [0,1,1,2][Number(get('uart-eol').value)];
+            setText(get('uart-count'), valid ? count + ' Б' : '—');
+            return valid && (ascii ? text.length : raw.length) > 0;
+        }
+        function showBus(bus)
+        {
+            uartVisible = bus === 3;
+            get('uart-console').hidden = !uartVisible;
+            get('sync-console').hidden = uartVisible;
+            get('bus-library').hidden = uartVisible;
+            get('sync-state').hidden = uartVisible;
+            get('bus-usart').setAttribute('aria-pressed', String(uartVisible));
+            if (uartVisible)
+            {
+                get('bus-spi').setAttribute('aria-pressed', 'false');
+                get('bus-i2c').setAttribute('aria-pressed', 'false');
+                pollUart();
+            }
+            else
+            {
+                switchConsole(bus);
+                get('bus-spi').setAttribute('aria-pressed', String(consoleBus === 2));
+                get('bus-i2c').setAttribute('aria-pressed', String(consoleBus === 1));
+                if (uartTimer !== null)
+                {
+                    clearTimeout(uartTimer);
+                    uartTimer = null;
+                }
+            }
+        }
+        async function uartFetch(body = null)
+        {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 4000);
+            try
+            {
+                const options = {cache: 'no-store', signal: controller.signal};
+                if (body !== null)
+                {
+                    options.method = 'POST';
+                    options.headers = {'Content-Type': 'text/plain', 'X-Device-Control': '1'};
+                    options.body = body;
+                }
+                const reply = await fetch(body === null ? '/api/usart?from=' + uartCursor : '/api/usart', options);
+                const data = await reply.json();
+                if (!reply.ok || data.error)
+                {
+                    const messages = {1:'Проверь параметры USART и данные команды.',2:'USART занят передачей.',
+                        3:'Сначала включи USART.',4:'Ошибка DMA USART. Включи USART заново.'};
+                    const error = new Error(messages[data.error] || 'Ошибка USART');
+                    error.rejected = true;
+                    throw error;
+                }
+                return data;
+            }
+            catch (error)
+            {
+                if (error.rejected)
+                {
+                    throw error;
+                }
+                throw new Error(body === null ? 'Нет связи с USART.' : 'Нет подтверждения операции USART. Не повторяй передачу автоматически.');
+            }
+            finally
+            {
+                clearTimeout(timer);
+            }
+        }
+        function showUart(data)
+        {
+            uartDeviceEnabled = data.enabled;
+            uartTxBusy = data.tx_busy;
+            uartCursor = data.next;
+            uartLost += data.lost;
+            if (!uartConfigLoaded)
+            {
+                for (const [id, value] of [['baud',data.baud],['bits',data.bits],['parity',data.parity],['stop',data.stop]])
+                {
+                    get('uart-' + id).value = String(value);
+                }
+                uartConfigLoaded = true;
+            }
+            setText(get('uart-state'), (data.enabled ? 'USART включён' : 'USART отключён') +
+                ' · baud: ' + data.actual_baud + ' · ' + data.bits + ['N','O','E'][data.parity] + data.stop + ' · RX: ' + data.rx_total + ' B · TX: ' + data.tx_total +
+                ' B · lost: ' + uartLost + ' · PE/FE/NE/ORE/DMA/TO: ' + data.errors.join('/'));
+            if (data.rx)
+            {
+                const values = data.rx.match(/../g) || [];
+                const ascii = get('uart-format').value === '1';
+                const text = ascii ? values.map(value =>
+                {
+                    const number = parseInt(value,16);
+                    return number === 10 ? '\n' : number >= 32 && number < 127 ? String.fromCharCode(number) : '\\x' + value;
+                }).join('') : values.join(' ') + '\n';
+                get('uart-rx').value = (get('uart-rx').value + text).slice(-8192);
+                get('uart-rx').scrollTop = get('uart-rx').scrollHeight;
+            }
+            uartButtons();
+        }
+        async function pollUart()
+        {
+            if (!uartVisible || uartPolling || uartWriting)
+            {
+                return;
+            }
+            if (uartTimer !== null)
+            {
+                clearTimeout(uartTimer);
+                uartTimer = null;
+            }
+            uartPolling = true;
+            const operation = uartOperation;
+            let delay = 100;
+            try
+            {
+                const data = await uartFetch();
+                if (operation === uartOperation)
+                {
+                    showUart(data);
+                }
+                delay = data.more ? 10 : 100;
+            }
+            catch (error)
+            {
+                uartMessage(error.message, true);
+                delay = 1000;
+            }
+            finally
+            {
+                uartPolling = false;
+                if (uartVisible && !uartWriting)
+                {
+                    uartTimer = setTimeout(pollUart, delay);
+                }
+            }
+        }
+        async function controlUart(kind)
+        {
+            if (uartWriting)
+            {
+                return;
+            }
+            let body;
+            if (kind === 'start')
+            {
+                if (get('uart-bits').value === '7' && get('uart-parity').value === '0')
+                {
+                    uartMessage('Для 7 бит выбери Odd или Even.', true);
+                    return;
+                }
+                body = 'start baud=' + get('uart-baud').value + ' bits=' + get('uart-bits').value +
+                    ' parity=' + get('uart-parity').value + ' stop=' + get('uart-stop').value + '\n';
+            }
+            else if (kind === 'stop')
+            {
+                body = 'stop\n';
+            }
+            else
+            {
+                if (!uartCount())
+                {
+                    uartMessage('Введи от 1 до 256 байт. HEX — полные пары, ASCII — 1…127.', true);
+                    return;
+                }
+                body = 'tx format=' + get('uart-format').value + ' eol=' + get('uart-eol').value + '\n' + get('uart-command').value;
+            }
+            uartWriting = true;
+            ++uartOperation;
+            uartButtons();
+            try
+            {
+                await uartFetch(body);
+                if (kind === 'tx')
+                {
+                    uartTxBusy = true;
+                }
+                if (kind === 'start')
+                {
+                    uartConfigLoaded = false;
+                }
+                uartMessage(kind === 'tx' ? 'Передача принята DMA. Завершение — по TX и статусу USART.' : 'Параметры USART применены.');
+            }
+            catch (error)
+            {
+                uartMessage(error.message, true);
+            }
+            finally
+            {
+                uartWriting = false;
+                uartButtons();
+                pollUart();
+            }
+        }
+        get('uart-start').addEventListener('click', () => controlUart('start'));
+        get('uart-off').addEventListener('click', () => controlUart('stop'));
+        get('uart-send').addEventListener('click', () => controlUart('tx'));
+        get('uart-clear').addEventListener('click', () => { get('uart-rx').value = ''; });
+        get('uart-command').addEventListener('input', () =>
+        {
+            const field = get('uart-command');
+            if (get('uart-format').value === '0')
+            {
+                const raw = field.value.replace(/\s/g, '');
+                if (!/^[0-9a-fA-F]*$/.test(raw) || raw.length > 512)
+                {
+                    field.value = uartLast;
+                    uartMessage('HEX: разрешены только 0–9, A–F. До 256 байт.', true);
+                }
+                else
+                {
+                    const digitsBefore = field.value.slice(0,field.selectionStart).replace(/\s/g,'').length;
+                    field.value = (raw.toUpperCase().match(/.{1,2}/g) || []).join(' ');
+                    const position = digitsBefore + Math.max(0,Math.ceil(digitsBefore / 2) - 1);
+                    field.setSelectionRange(position,position);
+                    uartLast = field.value;
+                    uartMessage('');
+                }
+            }
+            uartCount();
+        });
+        get('uart-format').addEventListener('change', () =>
+        {
+            if (get('uart-format').value === '0' && !/^[0-9a-fA-F\s]*$/.test(get('uart-command').value))
+            {
+                get('uart-command').value = '';
+            }
+            uartLast = get('uart-command').value;
+            uartCount();
+        });
+        get('uart-eol').addEventListener('change', uartCount);
         update();
     </script>
 </body>

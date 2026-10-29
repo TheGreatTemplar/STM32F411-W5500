@@ -54,6 +54,18 @@ CS задаются для каждой команды. Формат кадра 
 Fast mode до 400 кГц (делитель при HSI 16 МГц даёт 380952 Гц).
 Выводы независимы от SPI1/SPI2 и LSE. [I2C-консоль](../documentation/I2C_CONSOLE.md).
 
+## Тест USART1
+
+| Сигнал | GPIO | Назначение |
+| --- | --- | --- |
+| TX | PA9 | USART1_TX AF7, 3,3 В |
+| RX | PA10 | USART1_RX AF7, 3,3 В |
+| GND | GND | Общая земля |
+
+Для loopback соединить PA9 с PA10. RX DMA2 Stream2 channel4; TX DMA2 Stream7
+channel4. SPI2 не передаёт, пока USART включён: защита от смены APB2/BRR.
+I2S пока не назначена. [Тест USART](../documentation/USART_CONSOLE.md).
+
 ## Внешняя Flash: W25Q64JV, 8 Мбайт
 
 | Сигнал | Black Pill | Назначение |

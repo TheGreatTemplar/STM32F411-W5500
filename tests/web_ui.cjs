@@ -13,6 +13,10 @@ let timerId = 0;
 let systemTimers = false;
 let systemApplyCalls = 0;
 let systemFail = false;
+let uartFailTx = false;
+let uartWire = '';
+const uartState = {enabled:false,tx_busy:false,baud:115200,actual_baud:115107,bits:8,parity:0,stop:1,
+    rx_total:0,tx_total:0,next:0,lost:0,more:0,errors:[0,0,0,0,0,0],rx:''};
 const systemState = {ip: '172.16.236.220', mask: '255.255.255.0', gateway: '172.16.236.1', port: 5025,
     calibration: 0, sequence: 0, busy: false, error: 0, cal_pending: false, cal_applied: 0, cal_error: 0};
 let holdAdc = null;
@@ -211,6 +215,34 @@ const context = vm.createContext({
     async fetch(url, options)
     {
         requests.push({url, options});
+        if (url.startsWith('/api/usart?from='))
+        {
+            const from = Number(url.split('=')[1]);
+            return {ok:true,json:async()=>({...uartState,rx:uartWire.slice(from*2),next:uartWire.length/2})};
+        }
+        if (url === '/api/usart')
+        {
+            assert.equal(options.headers['X-Device-Control'],'1');
+            if (options.body.startsWith('tx '))
+            {
+                if (uartFailTx)
+                {
+                    throw new Error('Lost TX acknowledgement');
+                }
+                const [header,...payload] = options.body.split('\n');
+                const format = /format=(\d)/.exec(header)[1];
+                const eol = Number(/eol=(\d)/.exec(header)[1]);
+                const bytes = format === '0' ? payload.join('\n').replace(/\s/g,'') : Buffer.from(payload.join('\n'),'ascii').toString('hex');
+                uartWire += (bytes + ['', '0D', '0A', '0D0A'][eol]).toUpperCase();
+                uartState.rx_total = uartWire.length/2;
+                uartState.tx_total = uartState.rx_total;
+            }
+            else
+            {
+                uartState.enabled = options.body.startsWith('start');
+            }
+            return {ok:true,json:async()=>({error:0})};
+        }
         if (url.startsWith('/api/settings'))
         {
             if (options.method === 'POST')
@@ -1031,7 +1063,43 @@ async function test()
     await vm.runInContext('saveSystem(true)', context);
     assert.equal(systemState.port, 5026);
     assert.match(elements.get('network-message').textContent, /65535/);
-    console.log('Web UI: SPI/I2C, named library, queue, RTC/ADC/LED, Flash statistics and About passed');
+    vm.runInContext("['uart-format','uart-eol','uart-command','uart-baud','uart-bits','uart-parity','uart-stop'].forEach(get)",context);
+    elements.get('uart-format').value = '0';
+    elements.get('uart-eol').value = '3';
+    elements.get('uart-command').value = '55 AA';
+    elements.get('bus-usart').click();
+    await new Promise(setImmediate);
+    assert.equal(elements.get('sync-console').hidden,true);
+    assert.equal(elements.get('bus-library').hidden,true);
+    assert.equal(elements.get('uart-console').hidden,false);
+    elements.get('uart-baud').value = '115200';
+    elements.get('uart-bits').value = '8';
+    elements.get('uart-parity').value = '0';
+    elements.get('uart-stop').value = '1';
+    await vm.runInContext("controlUart('start')",context);
+    await new Promise(setImmediate);
+    assert.equal(uartState.enabled,true);
+    await vm.runInContext("controlUart('tx')",context);
+    await new Promise(setImmediate);
+    assert.equal(uartWire,'55AA0D0A');
+    assert.match(elements.get('uart-rx').value,/55 AA 0D 0A/);
+    elements.get('uart-command').value = 'GZ';
+    const uartWrites = requests.filter(r=>r.url==='/api/usart').length;
+    await vm.runInContext("controlUart('tx')",context);
+    assert.equal(requests.filter(r=>r.url==='/api/usart').length,uartWrites);
+    elements.get('uart-command').value = '01';
+    uartFailTx = true;
+    await vm.runInContext("controlUart('tx')",context);
+    assert.equal(requests.filter(r=>r.url==='/api/usart').length,uartWrites+1);
+    assert.match(elements.get('uart-message').textContent,/Нет подтверждения/);
+    uartFailTx = false;
+    await vm.runInContext("controlUart('stop')",context);
+    assert.equal(uartState.enabled,false);
+    elements.get('bus-i2c').click();
+    assert.equal(elements.get('uart-console').hidden,true);
+    assert.equal(elements.get('sync-console').hidden,false);
+    assert.equal(elements.get('bus-library').hidden,false);
+    console.log('Web UI: SPI/I2C, USART DMA terminal/loopback/no retry, library, queue, RTC, Flash and About passed');
 }
 
 test().catch((error) =>

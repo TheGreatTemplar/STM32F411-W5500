@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+extern volatile bool board_usart_clock_lock;
 
 void board_init(void);
 void SysTick_Handler(void);

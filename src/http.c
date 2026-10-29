@@ -6,6 +6,7 @@
 #include "i2c_console.h"
 #include "rtc.h"
 #include "spi_console.h"
+#include "usart_console.h"
 #include "w5500.h"
 #include "web_page.h"
 #include <stdio.h>
@@ -329,6 +330,11 @@ static bool spi_response(http_client_t *client, bool config)
         return response(client, 400U, "Bad Request", "text/plain", "Invalid SPI command\n", 20U,
                         "");
     }
+    if (usart_enabled())
+    {
+        const char *message = "Stop USART before SPI transfer\n";
+        return response(client, 409U, "Conflict", "text/plain", message, strlen(message), "");
+    }
     if (!board_spi_console(&command, rx))
     {
         return response(client, 504U, "Gateway Timeout", "text/plain",
@@ -603,10 +609,41 @@ static bool settings_response(http_client_t *client, http_route_t route)
                     "application/json", client->body, (size_t)count, "");
 }
 
+static bool usart_response(http_client_t *client, bool writing)
+{
+    uint32_t cursor = 0U;
+    uint32_t error = 0U;
+    size_t size;
+    if (writing)
+    {
+        size_t body_size;
+        const char *body = request_body(client, &body_size);
+        error = body != NULL ? usart_control(body, body_size) : 1U;
+        size = (size_t)snprintf(client->body, sizeof(client->body), "{\"error\":%lu}",
+                                (unsigned long)error);
+        return response(client,
+                        error == 0U   ? 202U
+                        : error == 1U ? 400U
+                                      : 409U,
+                        error == 0U ? "Accepted" : "USART Error", "application/json", client->body,
+                        size, "");
+    }
+    if (!usart_cursor(client->request, client->used, &cursor))
+    {
+        return false;
+    }
+    size = usart_json(client->body, sizeof(client->body), cursor);
+    return size != 0U && response(client, 200U, "OK", "application/json", client->body, size, "");
+}
+
 static bool dispatch(http_client_t *client, http_route_t route, const adc_snapshot_t *adc)
 {
     switch (route)
     {
+    case HTTP_USART:
+        return usart_response(client, false);
+    case HTTP_USART_CONTROL:
+        return usart_response(client, true);
     case HTTP_SETTINGS:
     case HTTP_SAVE_SETTINGS:
     case HTTP_APPLY_SETTINGS:

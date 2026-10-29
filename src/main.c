@@ -3,6 +3,7 @@
 #include "config.h"
 #include "http.h"
 #include "rtc.h"
+#include "usart_console.h"
 #include "w5500.h"
 
 int main(void)
@@ -17,6 +18,7 @@ int main(void)
     bool settings_busy;
     store_error_t settings_error;
     board_init();
+    usart_init();
     command_store_init();
     command_system_get(&settings, &settings_sequence, &settings_busy, &settings_error);
     bench_settings_activate(&settings);
@@ -39,6 +41,7 @@ int main(void)
             }
         }
         rtc_poll();
+        usart_poll();
         if (bench_network_poll())
         {
             http_reset();

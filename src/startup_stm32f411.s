@@ -1,4 +1,4 @@
-; Minimal Arm Compiler 6 / ARMASM startup. Only SysTick is enabled by this test.
+; Arm Compiler 6 / ARMASM startup with USART1 and DMA2 RX interrupts.
 Stack_Size      EQU     0x00001000
 Heap_Size       EQU     0x00000200
 
@@ -33,7 +33,15 @@ __Vectors
                 GBLA    irq_index
 irq_index       SETA    0
                 WHILE   irq_index < 86
+                IF      irq_index = 37
+                DCD     USART1_IRQHandler
+                ELSE
+                IF      irq_index = 58
+                DCD     DMA2_Stream2_IRQHandler
+                ELSE
                 DCD     Default_Handler
+                ENDIF
+                ENDIF
 irq_index       SETA    irq_index + 1
                 WEND
 __Vectors_End
@@ -45,6 +53,8 @@ Reset_Handler   PROC
                 IMPORT  SystemInit
                 IMPORT  __main
                 IMPORT  SysTick_Handler
+                IMPORT  USART1_IRQHandler
+                IMPORT  DMA2_Stream2_IRQHandler
                 LDR     R0, =SystemInit
                 BLX     R0
                 LDR     R0, =__main

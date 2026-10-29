@@ -4,11 +4,37 @@
 #include "i2c_console.h"
 #include "rtc.h"
 #include "spi_console.h"
+#include "usart_console.h"
 #include "w5500.h"
 #include <stdio.h>
 #include <string.h>
 
 static uint32_t now;
+bool usart_enabled(void)
+{
+    return false;
+}
+uint32_t usart_control(const char *body, size_t size)
+{
+    return size == 5U && memcmp(body, "stop\n", 5U) == 0 ? 0U : 1U;
+}
+bool usart_cursor(const char *request, size_t size, uint32_t *cursor)
+{
+    (void)request;
+    (void)size;
+    *cursor = 0U;
+    return true;
+}
+size_t usart_json(char *json, size_t capacity, uint32_t cursor)
+{
+    (void)cursor;
+    if (capacity < 18U)
+    {
+        return 0U;
+    }
+    strcpy(json, "{\"enabled\":false}");
+    return strlen(json);
+}
 static uint8_t state[4];
 static bool hold_tx[4];
 static bool mock_sending[4];
@@ -24,7 +50,7 @@ static char input[APP_REQUEST_CAPACITY];
 static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
-static char output[196608];
+static char output[262144];
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
@@ -530,6 +556,15 @@ int test_entry(void)
     CHECK(strstr(output, "\"source_sha256\":\"") != NULL);
     CHECK(strstr(output, "\"web_crc32\":\"") != NULL);
     CHECK(strstr(output, "\"unallocated_bytes\":7331840") != NULL);
+    CHECK(framing_ok());
+    prepare("GET /api/usart?from=0 HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "200 OK") != NULL);
+    CHECK(strstr(output, "\"enabled\":false") != NULL);
+    CHECK(framing_ok());
+    prepare("POST /api/usart HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 5\r\n\r\nstop\n");
+    pump(&adc);
+    CHECK(strstr(output, "202 Accepted") != NULL);
     CHECK(framing_ok());
     prepare("GET /api/diagnostics HTTP/1.1\r\n\r\n");
     pump(&adc);

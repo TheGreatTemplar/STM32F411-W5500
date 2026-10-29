@@ -3,6 +3,7 @@
 #include "spi_console.h"
 
 uint32_t SystemCoreClock = 16000000U;
+volatile bool board_usart_clock_lock;
 static volatile uint32_t tick_ms;
 static uint32_t spi_console_duration_us;
 
@@ -336,8 +337,7 @@ bool board_spi_console_config(const spi_command_t *command)
 
 /* DWT runs at the selected core clock, independently of the millisecond tick.
  * Inline the ready path: do not call a timer function between data accesses. */
-__STATIC_FORCEINLINE bool spi2_wait(uint32_t mask, uint32_t value, uint32_t start,
-                                  uint32_t budget)
+__STATIC_FORCEINLINE bool spi2_wait(uint32_t mask, uint32_t value, uint32_t start, uint32_t budget)
 {
     for (;;)
     {
@@ -375,10 +375,10 @@ static bool spi2_dma_stop(uint32_t hz)
             return false;
         }
     }
-    DMA1->LIFCR = DMA_LIFCR_CTCIF3 | DMA_LIFCR_CHTIF3 | DMA_LIFCR_CTEIF3 |
-                  DMA_LIFCR_CDMEIF3 | DMA_LIFCR_CFEIF3;
-    DMA1->HIFCR = DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTEIF4 |
-                  DMA_HIFCR_CDMEIF4 | DMA_HIFCR_CFEIF4;
+    DMA1->LIFCR = DMA_LIFCR_CTCIF3 | DMA_LIFCR_CHTIF3 | DMA_LIFCR_CTEIF3 | DMA_LIFCR_CDMEIF3 |
+                  DMA_LIFCR_CFEIF3;
+    DMA1->HIFCR = DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTEIF4 | DMA_HIFCR_CDMEIF4 |
+                  DMA_HIFCR_CFEIF4;
     __DSB();
     return true;
 }
@@ -394,8 +394,8 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     uint32_t cycles;
     bool ok = true;
     spi_console_duration_us = 0U;
-    if ((command->mode > 3U) || (command->lsb_first > 1U) || (command->cs_high > 1U) ||
-        (command->size == 0U) || (command->size > SPI_CONSOLE_MAX_BYTES))
+    if (board_usart_clock_lock || (command->mode > 3U) || (command->lsb_first > 1U) ||
+        (command->cs_high > 1U) || (command->size == 0U) || (command->size > SPI_CONSOLE_MAX_BYTES))
     {
         return false;
     }
@@ -431,8 +431,8 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     SPI2->CR1 = cr1 | (plan.prescaler << 3U) | SPI_CR1_SPE;
     /* Expected wire time plus 100 us of software/peripheral margin.
      * The maximum budget is well below one CYCCNT wrap at every supported rate. */
-    budget = (uint32_t)command->size * 8U * (plan.system_hz / command->hz) +
-             plan.system_hz / 10000U;
+    budget =
+        (uint32_t)command->size * 8U * (plan.system_hz / command->hz) + plan.system_hz / 10000U;
     cycles = DWT->CYCCNT;
     if (ok)
     {
