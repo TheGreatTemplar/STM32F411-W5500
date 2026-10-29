@@ -133,25 +133,7 @@ def model_clock(machine, address, size, data):
     machine.mem_write(0x40023808, ((cfgr & ~12) | ((cfgr & 3) << 2)).to_bytes(4, 'little'))
     machine.mem_write(0x40007004, ((1 << 14) if cr & (1 << 24) else 0).to_bytes(4, 'little'))
 
-from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
-spi_pending = []
-spi_events = []
-
-
-def spi_data_write(machine, access, address, size, value, data):
-    assert size == 1
-    spi_pending.append(value)
-    spi_events.append(('tx', value))
-    assert len(spi_pending) <= 2, 'RX buffer not serviced'
-
-
-def spi_data_read(machine, access, address, size, value, data):
-    assert size == 1 and spi_pending
-    value = spi_pending.pop(0)
-    machine.mem_write(address, bytes([value]))
-    spi_events.append(('rx', value))
-
-
+from spi_dma_tests import DmaModel
 spi_cases = 0
 for mode in range(4):
     for hz in [62500, 125000, 250000, 500000, 1000000, *range(2000000, 20000001, 2000000)]:
@@ -170,10 +152,8 @@ for mode in range(4):
             uc.mem_map(0xE000E000, 0x1000)
             uc.mem_map(0xE0001000, 0x1000)
             uc.hook_add(UC_HOOK_CODE, model_clock)
-            spi_write_hook = uc.hook_add(UC_HOOK_MEM_WRITE, spi_data_write,
-                                         begin=0x4000380C, end=0x4000380C)
-            spi_read_hook = uc.hook_add(UC_HOOK_MEM_READ, spi_data_read,
-                                        begin=0x4000380C, end=0x4000380C)
+            uc.mem_map(0x40026000, 0x1000)
+            dma_model = DmaModel(uc)
         uc.reg_write(UC_ARM_REG_R0, hz)
         uc.reg_write(UC_ARM_REG_R1, 0x20018800)
         assert call(uc, symbols['spi_clock_plan']) == 1
@@ -185,10 +165,7 @@ for mode in range(4):
         uc.mem_write(0x40013000, (0x035C).to_bytes(4, 'little'))
         uc.reg_write(UC_ARM_REG_R0, 0x20018000)
         uc.reg_write(UC_ARM_REG_R1, 0x20018400)
-        spi_events.clear()
         assert call(uc, symbols['board_spi_console']) == 1
-        assert spi_events[:3] == [('tx', 0x9F), ('tx', 0), ('rx', 0x9F)]
-        assert not spi_pending
         assert bytes(uc.mem_read(0x20018400, 4)) == command[20:24]
         assert call(uc, symbols['board_spi_console_duration_us']) > 0
         cr1 = int.from_bytes(uc.mem_read(0x40003800, 4), 'little')
@@ -236,22 +213,13 @@ def advance_tick(machine, address, size, data):
         machine.mem_write(symbols['tick_ms'], (tick + 1).to_bytes(4, 'little'))
 
 
-tick_before = bytes(uc.mem_read(symbols['tick_ms'], 4))
-uc.mem_write(0x40003808, (0).to_bytes(4, 'little'))  # Peripheral stops responding.
-uc.reg_write(UC_ARM_REG_R0, 0x20018000)
-uc.reg_write(UC_ARM_REG_R1, 0x20018400)
-assert call(uc, symbols['board_spi_console']) == 0
-assert bytes(uc.mem_read(symbols['tick_ms'], 4)) == tick_before
-uc.hook_del(spi_write_hook)
-uc.hook_del(spi_read_hook)
-assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 28
-assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
+dma_model.close()
 print('SPI console: 60 mode/rate configurations, PLL switching/restoration, register loopback, limits and invalid input passed')
 from i2c_register_tests import run as run_i2c_register_tests
 from spi_config_tests import run as run_spi_config_tests
 run_spi_config_tests(uc, symbols, call)
-from spi_pipeline_tests import run as run_spi_pipeline_tests
-run_spi_pipeline_tests(uc, symbols, call)
+from spi_dma_tests import run as run_spi_dma_tests
+run_spi_dma_tests(uc, symbols, call)
 run_i2c_register_tests(uc, symbols, call)
 uc, symbols = load_image(root / "build/w5500_test.axf")
 result = call(uc, symbols["test_entry"])

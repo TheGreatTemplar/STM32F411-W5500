@@ -357,6 +357,32 @@ __STATIC_FORCEINLINE bool spi2_wait(uint32_t mask, uint32_t value, uint32_t star
     }
 }
 
+/* DMA1 is currently dedicated to SPI2. If a stream cannot stop, resetting DMA1
+ * is required before returning: it must never retain a pointer into caller RAM. */
+static bool spi2_dma_stop(uint32_t hz)
+{
+    const uint32_t start = DWT->CYCCNT;
+    DMA1_Stream3->CR &= ~DMA_SxCR_EN;
+    DMA1_Stream4->CR &= ~DMA_SxCR_EN;
+    while (((DMA1_Stream3->CR | DMA1_Stream4->CR) & DMA_SxCR_EN) != 0U)
+    {
+        if ((uint32_t)(DWT->CYCCNT - start) >= hz / 10000U)
+        {
+            RCC->AHB1RSTR |= RCC_AHB1RSTR_DMA1RST;
+            (void)RCC->AHB1RSTR;
+            RCC->AHB1RSTR &= ~RCC_AHB1RSTR_DMA1RST;
+            __DSB();
+            return false;
+        }
+    }
+    DMA1->LIFCR = DMA_LIFCR_CTCIF3 | DMA_LIFCR_CHTIF3 | DMA_LIFCR_CTEIF3 |
+                  DMA_LIFCR_CDMEIF3 | DMA_LIFCR_CFEIF3;
+    DMA1->HIFCR = DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTEIF4 |
+                  DMA_HIFCR_CDMEIF4 | DMA_HIFCR_CFEIF4;
+    __DSB();
+    return true;
+}
+
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
 {
     spi_clock_plan_t plan;
@@ -366,7 +392,6 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     uint32_t cr1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;
     uint32_t budget;
     uint32_t cycles;
-    size_t i;
     bool ok = true;
     spi_console_duration_us = 0U;
     if ((command->mode > 3U) || (command->lsb_first > 1U) || (command->cs_high > 1U) ||
@@ -378,6 +403,7 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         return false;
     }
+    SPI2->CR2 = 0U;
     SPI2->CR1 = 0U;
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
@@ -399,51 +425,70 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         cr1 |= SPI_CR1_LSBFIRST;
     }
+    RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN;
+    (void)RCC->AHB1ENR;
+    ok = spi2_dma_stop(plan.system_hz);
     SPI2->CR1 = cr1 | (plan.prescaler << 3U) | SPI_CR1_SPE;
-    /* Let the configured idle clock settle before asserting CS. */
-    for (i = 0U; i < 16U; ++i)
-    {
-        __NOP();
-    }
     /* Expected wire time plus 100 us of software/peripheral margin.
      * The maximum budget is well below one CYCCNT wrap at every supported rate. */
     budget = (uint32_t)command->size * 8U * (plan.system_hz / command->hz) +
              plan.system_hz / 10000U;
     cycles = DWT->CYCCNT;
-    GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 12U : 28U);
-    ok = spi2_wait(SPI_SR_TXE, SPI_SR_TXE, cycles, budget);
     if (ok)
     {
-        *(__IO uint8_t *)&SPI2->DR = command->tx[0];
-    }
-    /* RM0383 full duplex: queue byte n before waiting for RX byte n-1.
-     * Keep at most two bytes outstanding, so the one-byte RX buffer is drained. */
-    for (i = 1U; ok && (i < command->size); ++i)
-    {
-        ok = spi2_wait(SPI_SR_TXE, SPI_SR_TXE, cycles, budget);
-        if (ok)
+        /* RM0383: SPI2 RX = DMA1 stream 3/channel 0, TX = stream 4/channel 0.
+         * Normal mode, 8-bit memory/peripheral, MINC, direct mode, no IRQ. */
+        DMA1_Stream3->CR = DMA_SxCR_MINC | DMA_SxCR_PL;
+        DMA1_Stream4->CR = DMA_SxCR_MINC | DMA_SxCR_PL_1 | DMA_SxCR_DIR_0;
+        DMA1_Stream3->FCR = 0U;
+        DMA1_Stream4->FCR = 0U;
+        DMA1_Stream3->PAR = (uint32_t)&SPI2->DR;
+        DMA1_Stream4->PAR = (uint32_t)&SPI2->DR;
+        DMA1_Stream3->M0AR = (uint32_t)rx;
+        DMA1_Stream4->M0AR = (uint32_t)command->tx;
+        DMA1_Stream3->NDTR = (uint32_t)command->size;
+        DMA1_Stream4->NDTR = (uint32_t)command->size;
+        __DMB();
+        DMA1_Stream3->CR |= DMA_SxCR_EN;
+        SPI2->CR2 = SPI_CR2_RXDMAEN;
+        DMA1_Stream4->CR |= DMA_SxCR_EN;
+        GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 12U : 28U);
+        __DSB();
+        cycles = DWT->CYCCNT;
+        SPI2->CR2 = SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN;
+        for (;;)
         {
-            *(__IO uint8_t *)&SPI2->DR = command->tx[i];
-            ok = spi2_wait(SPI_SR_RXNE, SPI_SR_RXNE, cycles, budget);
-        }
-        if (ok)
-        {
-            rx[i - 1U] = *(__IO uint8_t *)&SPI2->DR;
-        }
-    }
-    if (ok)
-    {
-        ok = spi2_wait(SPI_SR_RXNE, SPI_SR_RXNE, cycles, budget);
-        if (ok)
-        {
-            rx[command->size - 1U] = *(__IO uint8_t *)&SPI2->DR;
-            ok = spi2_wait(SPI_SR_TXE | SPI_SR_BSY, SPI_SR_TXE, cycles, budget);
+            const uint32_t low = DMA1->LISR;
+            const uint32_t high = DMA1->HISR;
+            if ((low & (DMA_LISR_TEIF3 | DMA_LISR_DMEIF3 | DMA_LISR_FEIF3)) != 0U ||
+                (high & (DMA_HISR_TEIF4 | DMA_HISR_DMEIF4 | DMA_HISR_FEIF4)) != 0U ||
+                (SPI2->SR & (SPI_SR_OVR | SPI_SR_MODF)) != 0U)
+            {
+                ok = false;
+                break;
+            }
+            if ((low & DMA_LISR_TCIF3) != 0U && (high & DMA_HISR_TCIF4) != 0U &&
+                DMA1_Stream3->NDTR == 0U && DMA1_Stream4->NDTR == 0U)
+            {
+                ok = spi2_wait(SPI_SR_TXE | SPI_SR_BSY, SPI_SR_TXE, cycles, budget);
+                break;
+            }
+            if ((uint32_t)(DWT->CYCCNT - cycles) >= budget)
+            {
+                ok = false;
+                break;
+            }
         }
     }
     GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
     spi_console_duration_us =
         (DWT->CYCCNT - cycles + plan.system_hz / 1000000U - 1U) / (plan.system_hz / 1000000U);
+    SPI2->CR2 = 0U;
     SPI2->CR1 &= ~SPI_CR1_SPE;
+    if (!spi2_dma_stop(plan.system_hz))
+    {
+        ok = false;
+    }
     if (!ok)
     {
         RCC->APB1RSTR |= RCC_APB1RSTR_SPI2RST;
