@@ -1,6 +1,7 @@
 #ifndef COMMAND_STORE_H
 #define COMMAND_STORE_H
 
+#include "settings.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -11,7 +12,7 @@
 #define COMMAND_LIBRARY_TOTAL (2U * COMMAND_LIBRARY_SLOTS)
 #define COMMAND_LIBRARY_NEW COMMAND_LIBRARY_TOTAL
 #define COMMAND_LIBRARY_NAME_BYTES 128U
-#define COMMAND_STORE_NAME_BYTES 128U
+#define COMMAND_STORE_NAME_BYTES 192U
 
 typedef enum
 {
@@ -40,5 +41,10 @@ store_error_t command_library_save(uint32_t id, const char *name, size_t name_si
                                    const char *body, size_t size);
 store_error_t command_library_delete(uint32_t id);
 size_t command_library_json(char *json, size_t capacity, uint32_t offset);
+
+void command_system_get(bench_settings_t *settings, uint32_t *sequence, bool *busy,
+                        store_error_t *error);
+store_error_t command_system_save(const bench_settings_t *settings, uint32_t sequence);
+bool command_system_saved(void);
 
 #endif

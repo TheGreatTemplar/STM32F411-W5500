@@ -10,6 +10,8 @@
 #define SPI_STORE_BASE (FLASH_BYTES - COMMAND_LIBRARY_SLOTS * 2UL * SECTOR_BYTES)
 #define STORE_MAGIC 0x34444D43UL
 #define STORE_COMMIT 0xA55AC33CUL
+#define SYSTEM_BASE (STORE_BASE - 2UL * SECTOR_BYTES)
+#define SYSTEM_MAGIC 0x31535953UL
 
 typedef struct
 {
@@ -38,6 +40,7 @@ typedef struct
 } store_record_t;
 
 #define V3_BYTES offsetof(store_record_t, command_name_sizes)
+#define V4_BYTES (V3_BYTES + 16U + 4U * 128U)
 #define V2_BYTES offsetof(store_record_t, bus)
 
 #define LEGACY_BYTES offsetof(store_record_t, deleted)
@@ -78,6 +81,23 @@ typedef enum
 
 static store_record_t current;
 static store_record_t candidate;
+typedef struct
+{
+    uint32_t magic;
+    uint32_t version;
+    uint32_t sequence;
+    uint32_t payload_size;
+    uint32_t crc;
+    uint32_t commit;
+    bench_settings_t settings;
+} system_record_t;
+typedef char system_record_must_be_44[(sizeof(system_record_t) == 44U) ? 1 : -1];
+static system_record_t system_current;
+static bool system_reusable[2];
+static bool system_job;
+static uint32_t system_copy;
+static store_error_t system_error;
+static size_t job_bytes;
 static uint8_t jedec[3];
 static bool present;
 static bool ready;
@@ -106,11 +126,21 @@ static size_t record_bytes(const store_record_t *record)
     return record->version == 1U   ? LEGACY_BYTES
            : record->version == 2U ? V2_BYTES
            : record->version == 3U ? V3_BYTES
+           : record->version == 4U ? V4_BYTES
                                    : sizeof(*record);
 }
 
 static void normalize(store_record_t *record)
 {
+    uint32_t i;
+    if (record->version == 4U)
+    {
+        for (i = COMMAND_STORE_COUNT; i-- != 0U;)
+        {
+            memmove(record->command_names[i], (char *)record->command_names + i * 128U,
+                    record->command_name_sizes[i]);
+        }
+    }
     if (record->version < 4U)
     {
         memset(record->command_name_sizes, 0, sizeof(record->command_name_sizes));
@@ -129,14 +159,15 @@ static void normalize(store_record_t *record)
         record->name_size = 7U;
         memcpy(record->name, "Default", 7U);
     }
+    record->version = 5U;
 }
 
-static uint32_t record_crc(const store_record_t *record)
+static uint32_t block_crc(const void *record, size_t size)
 {
     const uint8_t *bytes = (const uint8_t *)record;
     uint32_t crc = UINT32_MAX;
     size_t i;
-    for (i = 0U; i < record_bytes(record); ++i)
+    for (i = 0U; i < size; ++i)
     {
         if ((i < 16U) || (i >= 24U))
         {
@@ -144,6 +175,11 @@ static uint32_t record_crc(const store_record_t *record)
         }
     }
     return ~crc;
+}
+
+static uint32_t record_crc(const store_record_t *record)
+{
+    return block_crc(record, record_bytes(record));
 }
 
 static bool flash_command(uint8_t command)
@@ -179,7 +215,7 @@ static bool label_valid(const char *name, size_t size, bool filename)
     {
         return !filename;
     }
-    if (size > COMMAND_STORE_NAME_BYTES ||
+    if (size > (filename ? COMMAND_LIBRARY_NAME_BYTES : COMMAND_STORE_NAME_BYTES) ||
         (filename && (name[0] == ' ' || name[size - 1U] == ' ' || (size == 1U && name[0] == '.') ||
                       (size == 2U && name[0] == '.' && name[1] == '.'))))
     {
@@ -235,7 +271,7 @@ static bool label_valid(const char *name, size_t size, bool filename)
         }
         if (code < minimum || code > 0x10FFFFU || (code >= 0xD800U && code <= 0xDFFFU) ||
             code < 32U || (code >= 127U && code <= 159U) ||
-            (filename && (code == '/' || code == '\\')) || ++count > 32U)
+            (filename && (code == '/' || code == '\\')) || ++count > (filename ? 32U : 48U))
         {
             return false;
         }
@@ -248,7 +284,10 @@ bool command_library_name_valid(const char *name, size_t size)
     return label_valid(name, size, true);
 }
 
-static bool newer(uint32_t a, uint32_t b) { return a != b && (uint32_t)(a - b) < 0x80000000UL; }
+static bool newer(uint32_t a, uint32_t b)
+{
+    return a != b && (uint32_t)(a - b) < 0x80000000UL;
+}
 
 static uint32_t slot_address(uint32_t id, uint32_t copy)
 {
@@ -260,7 +299,7 @@ static bool valid_record(const store_record_t *record)
 {
     uint32_t i;
     spi_clock_plan_t plan;
-    if ((record->magic != STORE_MAGIC) || (record->version < 1U || record->version > 4U) ||
+    if ((record->magic != STORE_MAGIC) || (record->version < 1U || record->version > 5U) ||
         (record->commit != STORE_COMMIT) || (record->payload_size != record_bytes(record) - 24U) ||
         (record->crc != record_crc(record)) || (record->mode > 3U) || (record->lsb > 1U) ||
         (record->cs_high > 1U) || (record->ascii > 1U))
@@ -294,7 +333,10 @@ static bool valid_record(const store_record_t *record)
     {
         if (record->lengths[i] > COMMAND_STORE_TEXT_MAX ||
             (record->version >= 4U &&
-             !label_valid(record->command_names[i], record->command_name_sizes[i], false)))
+             ((record->version == 4U && record->command_name_sizes[i] > 128U) ||
+              !label_valid((const char *)record->command_names +
+                               i * (record->version == 4U ? 128U : COMMAND_STORE_NAME_BYTES),
+                           record->command_name_sizes[i], false))))
         {
             return false;
         }
@@ -399,6 +441,49 @@ static void scan_step(void)
     }
 }
 
+static void system_load(void)
+{
+    uint8_t bytes[256];
+    uint32_t copy;
+    uint32_t offset;
+    system_record_t record;
+    for (copy = 0U; copy < 2U; ++copy)
+    {
+        bool blank = true;
+        memset(&record, 0xFF, sizeof(record));
+        for (offset = 0U; offset < SECTOR_BYTES; offset += sizeof(bytes))
+        {
+            uint32_t i;
+            if (!addressed(0x03U, SYSTEM_BASE + copy * SECTOR_BYTES + offset, NULL, bytes,
+                           sizeof(bytes)))
+            {
+                system_error = STORE_IO;
+                return;
+            }
+            if (offset == 0U)
+            {
+                memcpy(&record, bytes, sizeof(record));
+            }
+            for (i = 0U; i < sizeof(bytes); ++i)
+            {
+                blank = blank && bytes[i] == 0xFFU;
+            }
+        }
+        system_reusable[copy] = blank || (record.magic == SYSTEM_MAGIC && record.version == 1U &&
+                                          record.payload_size == sizeof(record) - 24U);
+        if (record.magic == SYSTEM_MAGIC && record.version == 1U && record.commit == STORE_COMMIT &&
+            record.payload_size == sizeof(record) - 24U &&
+            record.crc == block_crc(&record, sizeof(record)) &&
+            bench_settings_valid(&record.settings) &&
+            (system_current.version == 0U || newer(record.sequence, system_current.sequence)))
+        {
+            system_current = record;
+            system_copy = copy;
+        }
+    }
+    system_error = system_reusable[0] || system_reusable[1] ? STORE_OK : STORE_FOREIGN_DATA;
+}
+
 void command_store_init(void)
 {
     const uint8_t read_id = 0x9FU;
@@ -406,6 +491,14 @@ void command_store_init(void)
     uint32_t start;
 
     defaults();
+    memset(&system_current, 0, sizeof(system_current));
+    bench_settings_defaults(&system_current.settings);
+    system_reusable[0] = false;
+    system_reusable[1] = false;
+    system_copy = 0U;
+    system_job = false;
+    job_bytes = sizeof(candidate);
+    system_error = STORE_NO_FLASH;
     memset(catalog, 0, sizeof(catalog));
     scanning = false;
     migrating = false;
@@ -458,6 +551,7 @@ void command_store_init(void)
         last_error = STORE_TIMEOUT;
         return;
     }
+    system_load();
     scanning = true;
     last_error = STORE_OK;
 }
@@ -609,8 +703,10 @@ static store_error_t available(void)
 
 static void begin_write(uint32_t id)
 {
+    system_job = false;
+    job_bytes = sizeof(candidate);
     candidate.magic = STORE_MAGIC;
-    candidate.version = 4U;
+    candidate.version = 5U;
     candidate.sequence = generation + 1U;
     candidate.payload_size = sizeof(candidate) - 24U;
     candidate.commit = UINT32_MAX;
@@ -622,6 +718,62 @@ static void begin_write(uint32_t id)
     save_ok = false;
     operation_start = board_millis();
     job = JOB_ERASE;
+}
+
+void command_system_get(bench_settings_t *settings, uint32_t *sequence, bool *busy,
+                        store_error_t *error)
+{
+    *settings = system_current.settings;
+    *sequence = system_current.sequence;
+    *busy = job != JOB_IDLE || scanning || migrating;
+    *error = system_error;
+}
+
+bool command_system_saved(void)
+{
+    return system_current.version == 1U && system_current.commit == STORE_COMMIT;
+}
+
+store_error_t command_system_save(const bench_settings_t *settings, uint32_t sequence)
+{
+    system_record_t record;
+    uint32_t copy;
+    const store_error_t error = available();
+    if (error != STORE_OK)
+    {
+        return error;
+    }
+    if (!bench_settings_valid(settings))
+    {
+        return STORE_INVALID;
+    }
+    if (sequence != system_current.sequence)
+    {
+        return STORE_EXISTS;
+    }
+    copy = system_current.version != 0U ? 1U - system_copy : (system_reusable[0] ? 0U : 1U);
+    if (!system_reusable[copy])
+    {
+        return STORE_FOREIGN_DATA;
+    }
+    memset(&record, 0, sizeof(record));
+    record.magic = SYSTEM_MAGIC;
+    record.version = 1U;
+    record.sequence = sequence + 1U;
+    record.payload_size = sizeof(record) - 24U;
+    record.commit = UINT32_MAX;
+    record.settings = *settings;
+    record.crc = block_crc(&record, sizeof(record));
+    memset(&candidate, 0, sizeof(candidate));
+    memcpy(&candidate, &record, sizeof(record));
+    system_job = true;
+    job_bytes = sizeof(record);
+    target_address = SYSTEM_BASE + copy * SECTOR_BYTES;
+    position = 0U;
+    operation_start = board_millis();
+    system_error = STORE_OK;
+    job = JOB_ERASE;
+    return STORE_OK;
 }
 
 store_error_t command_library_load(uint32_t id)
@@ -830,6 +982,13 @@ static void migration_step(void)
 
 static void fail_job(store_error_t error)
 {
+    if (system_job)
+    {
+        system_error = error;
+        system_job = false;
+        job = JOB_IDLE;
+        return;
+    }
     last_error = error;
     migrating = false;
     save_ok = false;
@@ -881,7 +1040,7 @@ void command_store_poll(void)
         job = JOB_PROGRAM;
         break;
     case JOB_PROGRAM:
-        pending_size = sizeof(candidate) - position;
+        pending_size = job_bytes - position;
         if (pending_size > 256U)
         {
             pending_size = 256U;
@@ -898,7 +1057,7 @@ void command_store_poll(void)
         break;
     case JOB_PROGRAM_WAIT:
         position += pending_size;
-        if (position == sizeof(candidate))
+        if (position == job_bytes)
         {
             position = 0U;
             job = JOB_VERIFY;
@@ -909,7 +1068,7 @@ void command_store_poll(void)
         }
         break;
     case JOB_VERIFY:
-        pending_size = sizeof(candidate) - position;
+        pending_size = job_bytes - position;
         if (pending_size > sizeof(bytes))
         {
             pending_size = sizeof(bytes);
@@ -925,7 +1084,7 @@ void command_store_poll(void)
             return;
         }
         position += pending_size;
-        if (position == sizeof(candidate))
+        if (position == job_bytes)
         {
             job = JOB_COMMIT;
         }
@@ -946,7 +1105,7 @@ void command_store_poll(void)
     case JOB_COMMIT_WAIT:
     {
         uint32_t commit = 0U;
-        library_entry_t *entry = &catalog[target_id];
+        library_entry_t *entry;
         if (!addressed(0x03U, target_address + 20U, NULL, (uint8_t *)&commit, sizeof(commit)) ||
             (commit != STORE_COMMIT))
         {
@@ -954,6 +1113,17 @@ void command_store_poll(void)
             return;
         }
         candidate.commit = STORE_COMMIT;
+        if (system_job)
+        {
+            memcpy(&system_current, &candidate, sizeof(system_current));
+            system_copy = (target_address - SYSTEM_BASE) / SECTOR_BYTES;
+            system_reusable[system_copy] = true;
+            system_error = STORE_OK;
+            system_job = false;
+            job = JOB_IDLE;
+            return;
+        }
+        entry = &catalog[target_id];
         entry->kind = candidate.deleted != 0U ? 2U : 1U;
         entry->sequence = candidate.sequence;
         entry->copy = (target_address - slot_address(target_id, 0U)) / SECTOR_BYTES;

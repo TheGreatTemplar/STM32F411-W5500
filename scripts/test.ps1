@@ -19,7 +19,7 @@ try
     }
     & (Join-Path $Toolchain 'armlink.exe') --cpu Cortex-M4 --library_type=microlib `
         --entry test_entry --ro-base 0x08000000 --rw-base 0x20000000 `
-        --output build/w5500_test.axf build/w5500_mock.o build/w5500.o
+        --output build/w5500_test.axf build/w5500_mock.o build/w5500.o build/settings.o
     if ($LASTEXITCODE -ne 0)
     {
         throw 'Mock link failed'
@@ -33,7 +33,7 @@ try
     }
     & (Join-Path $Toolchain 'armlink.exe') --cpu Cortex-M4 --library_type=microlib `
         --entry test_entry --ro-base 0x08000000 --rw-base 0x20000000 `
-        --output build/http_test.axf build/http_mock.o build/http.o build/http_parse.o build/spi_console.o build/i2c_console.o
+        --output build/http_test.axf build/http_mock.o build/http.o build/http_parse.o build/spi_console.o build/i2c_console.o build/settings.o
     if ($LASTEXITCODE -ne 0)
     {
         throw 'HTTP mock link failed'
@@ -48,7 +48,7 @@ try
     }
     & (Join-Path $Toolchain 'armlink.exe') --cpu Cortex-M4 --library_type=microlib `
         --entry test_entry --ro-base 0x08000000 --rw-base 0x20000000 `
-        --output build/store_test.axf build/store_mock.o build/command_store.o build/spi_console.o build/i2c_console.o
+        --output build/store_test.axf build/store_mock.o build/command_store.o build/spi_console.o build/i2c_console.o build/settings.o
     if ($LASTEXITCODE -ne 0)
     {
         throw 'Flash mock link failed'

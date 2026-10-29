@@ -11,7 +11,7 @@ root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "build/test_deps"))
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS
-from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_PC
+from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_PC
 
 
 def load_image(path):
@@ -49,6 +49,30 @@ for on, expected in [(1, 1 << 29), (0, 1 << 13)]:
     call(uc, symbols["board_led"])
     assert int.from_bytes(uc.mem_read(0x40020818, 4), "little") == expected
 print("PC13 LED: active-low GPIO readback and BSRR writes passed")
+settings_body = b'ip=172.16.236.221\nmask=255.255.255.0\ngateway=172.16.236.1\nport=5026\ncal=-36\nseq=0\n'
+for path, route in [('/api/settings', 20), ('/api/settings/apply', 21)]:
+    request = (f'POST {path} HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: {len(settings_body)}\r\n\r\n'.encode() + settings_body)
+    for prefix in range(len(request) + 1):
+        uc.mem_write(0x20010000, request[:prefix])
+        uc.reg_write(UC_ARM_REG_R0, 0x20010000)
+        uc.reg_write(UC_ARM_REG_R1, prefix)
+        assert call(uc, symbols['http_parse']) == (route if prefix == len(request) else 0)
+    missing_control = request.replace(b'X-Device-Control: 1\r\n', b'')
+    uc.mem_write(0x20010000, missing_control)
+    uc.reg_write(UC_ARM_REG_R0, 0x20010000)
+    uc.reg_write(UC_ARM_REG_R1, len(missing_control))
+    assert call(uc, symbols['http_parse']) == 4
+for suffix in [b'', b'x', b'\n']:
+    body = settings_body + suffix
+    uc.mem_write(0x20010000, body)
+    uc.reg_write(UC_ARM_REG_R0, 0x20010000)
+    uc.reg_write(UC_ARM_REG_R1, len(body))
+    uc.reg_write(UC_ARM_REG_R2, 0x20018000)
+    from unicorn.arm_const import UC_ARM_REG_R3
+    uc.reg_write(UC_ARM_REG_R3, 0x20018100)
+    assert call(uc, symbols['bench_settings_parse']) == (not suffix)
+print('System routes: fragmented protected POST, strict settings parser and trailing-data rejection passed')
+
 spi_body = b"bus=2 mode=0 hz=1000000 lsb=0 cs_high=0 format=hex\n9F 00 00 00"
 spi_request = (b"POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: " +
                str(len(spi_body)).encode() + b"\r\n\r\n" + spi_body)
@@ -333,3 +357,36 @@ call(uc, symbols['rtc_poll'])
 uc.hook_del(hook)
 assert read_rtc()['error'] == 3 and not read_rtc()['ready']
 print('RTC: 252 calendar cases, BCD/weekday, explicit set, retained reboot, year 2000, LSE/INIT failures and foreign clock protection passed')
+
+# Smooth calibration never enters INIT and never changes the calendar/dividers.
+write_register(0x40023870, 2)
+write_register(0x4000280C, 64)
+write_register(0x40002850, 0)
+write_register(0x40002854, 0)
+call(uc, symbols['rtc_init'])
+call(uc, symbols['rtc_poll'])
+rtc_state = [read_register(a) for a in [0x40002800, 0x40002804, 0x40002810, 0x40002850, 0x40002854]]
+for steps in [-511, -1, 0, 1, 512]:
+    uc.reg_write(UC_ARM_REG_R0, steps & 0xFFFFFFFF)
+    call(uc, symbols['rtc_calibration_request'])
+    write_register(0x4000280C, 64)
+    call(uc, symbols['rtc_poll'])
+    expected = (32768 | (512 - steps)) if steps > 0 else -steps
+    assert read_register(0x4000283C) == expected
+    assert call(uc, symbols['rtc_calibration_pending']) == 0
+    assert call(uc, symbols['rtc_calibration_error']) == 0
+    assert rtc_state == [read_register(a) for a in [0x40002800, 0x40002804, 0x40002810, 0x40002850, 0x40002854]]
+uc.reg_write(UC_ARM_REG_R0, 513)
+call(uc, symbols['rtc_calibration_request'])
+assert call(uc, symbols['rtc_calibration_error']) == 1
+uc.reg_write(UC_ARM_REG_R0, 0)
+call(uc, symbols['rtc_calibration_request'])
+write_register(0x4000280C, 64 | (1 << 16))
+call(uc, symbols['rtc_poll'])
+assert read_register(0x4000283C) == 32768
+assert call(uc, symbols['rtc_calibration_pending']) == 1
+write_register(symbols['tick_ms'], read_register(symbols['tick_ms']) + 35000)
+call(uc, symbols['rtc_poll'])
+assert call(uc, symbols['rtc_calibration_error']) == 2
+assert call(uc, symbols['rtc_calibration_pending']) == 0
+print('RTC calibration: signed limits, CALP/CALM, 32 s window, calendar preservation and nonblocking RECALPF timeout passed')

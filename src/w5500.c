@@ -1,6 +1,7 @@
 #include "w5500.h"
 #include "board.h"
 #include "config.h"
+#include "settings.h"
 #include <string.h>
 
 /* W5500 variable-length SPI frames. HTTP uses sockets 0 through 3. */
@@ -108,9 +109,10 @@ static bool command(uint8_t socket, uint8_t value)
 bool w5500_init(void)
 {
     static const uint8_t mac[6] = APP_MAC_ADDRESS;
-    static const uint8_t ip[4] = APP_IP_ADDRESS;
-    static const uint8_t mask[4] = APP_NETMASK;
-    static const uint8_t gateway[4] = APP_GATEWAY;
+    const bench_settings_t *settings = bench_settings_active();
+    const uint8_t *ip = settings->ip;
+    const uint8_t *mask = settings->mask;
+    const uint8_t *gateway = settings->gateway;
     uint32_t socket;
     uint8_t check[4] = {0U, 0U, 0U, 0U};
     ++init_attempts;
@@ -122,10 +124,10 @@ bool w5500_init(void)
         io_ok = false;
         return false;
     }
-    write_bytes(COMMON_BLOCK, 0x0001U, gateway, sizeof(gateway));
-    write_bytes(COMMON_BLOCK, 0x0005U, mask, sizeof(mask));
+    write_bytes(COMMON_BLOCK, 0x0001U, gateway, 4U);
+    write_bytes(COMMON_BLOCK, 0x0005U, mask, 4U);
     write_bytes(COMMON_BLOCK, 0x0009U, mac, sizeof(mac));
-    write_bytes(COMMON_BLOCK, 0x000FU, ip, sizeof(ip));
+    write_bytes(COMMON_BLOCK, 0x000FU, ip, 4U);
     /* Retransmission interval 200 ms, 3 retries. DHCP/DNS are not used. */
     write8(COMMON_BLOCK, 0x0019U, 0x07U);
     write8(COMMON_BLOCK, 0x001AU, 0xD0U);
@@ -196,7 +198,7 @@ bool w5500_listen(uint8_t socket)
     }
     w5500_close(socket);
     write8(SOCKET_BLOCK(socket), SN_MR, 0x01U); /* TCP */
-    write16(socket, SN_PORT, APP_HTTP_PORT);
+    write16(socket, SN_PORT, (uint16_t)bench_settings_active()->port);
     if (!command(socket, 0x01U) || (w5500_state(socket) != 0x13U))
     {
         io_ok = false;

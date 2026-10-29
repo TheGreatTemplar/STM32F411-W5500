@@ -10,6 +10,11 @@ const requests = [];
 const timers = new Map();
 const browserStorage = new Map();
 let timerId = 0;
+let systemTimers = false;
+let systemApplyCalls = 0;
+let systemFail = false;
+const systemState = {ip: '172.16.236.220', mask: '255.255.255.0', gateway: '172.16.236.1', port: 5025,
+    calibration: 0, sequence: 0, busy: false, error: 0, cal_pending: false, cal_applied: 0, cal_error: 0};
 let holdAdc = null;
 let holdSpi = null;
 let confirmAllowed = true;
@@ -177,8 +182,19 @@ const context = vm.createContext({
     performance,
     setTimeout(callback, delay)
     {
-        timers.set(++timerId, {callback, delay});
-        return timerId;
+        const id = ++timerId;
+        timers.set(id, {callback, delay});
+        if (systemTimers && (delay === 150 || delay === 500))
+        {
+            Promise.resolve().then(() =>
+            {
+                if (timers.delete(id))
+                {
+                    callback();
+                }
+            });
+        }
+        return id;
     },
     clearTimeout(id)
     {
@@ -187,6 +203,31 @@ const context = vm.createContext({
     async fetch(url, options)
     {
         requests.push({url, options});
+        if (url.startsWith('/api/settings'))
+        {
+            if (options.method === 'POST')
+            {
+                if (systemFail)
+                {
+                    throw new Error('Lost settings reply');
+                }
+                const data = Object.fromEntries(options.body.trim().split('\n').map(line => line.split('=')));
+                if (Number(data.seq) !== systemState.sequence)
+                {
+                    return {ok: false, json: async () => ({error: 12})};
+                }
+                if (url.endsWith('/apply'))
+                {
+                    ++systemApplyCalls;
+                }
+                else
+                {
+                    Object.assign(systemState, {ip: data.ip, mask: data.mask, gateway: data.gateway, port: Number(data.port),
+                        calibration: Number(data.cal), cal_applied: Number(data.cal), sequence: systemState.sequence + 1});
+                }
+            }
+            return {ok: true, json: async () => ({...systemState})};
+        }
         if (url === '/api/library')
         {
             if (!options.method || options.body.startsWith('list '))
@@ -620,7 +661,7 @@ async function test()
     const beforeWake = requests.filter((r) => r.url === '/api/spi').length;
     elements.get('spi-send-0').click();
     assert.equal([...timers.values()].at(-1).delay, 0);
-    assert.equal(elements.get('spi-send-0').textContent, 'В очередь');
+    assert.equal(elements.get('spi-send-label-0').textContent, 'В очередь');
     await [...timers.values()].at(-1).callback();
     assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeWake + 1);
     assert.equal(elements.get('spi-send-0').disabled, false);
@@ -663,11 +704,11 @@ async function test()
     assert.match(elements.get('spi-message-0').textContent, /Очередь заполнена/);
     const requestsBeforeQueuedLanguageChange = requests.length;
     elements.get('lang-en').click();
-    assert.equal(elements.get('spi-send-0').textContent, 'Queue full');
+    assert.equal(elements.get('spi-send-label-0').textContent, 'Queue full');
     assert.equal(vm.runInContext('pendingSpi.length', context), 4);
     assert.equal(requests.length, requestsBeforeQueuedLanguageChange);
     elements.get('lang-ru').click();
-    assert.equal(elements.get('spi-send-0').textContent, 'Очередь полна');
+    assert.equal(elements.get('spi-send-label-0').textContent, 'Очередь полна');
     holdSpi = null;
     releaseSpi();
     await transferring;
@@ -687,20 +728,20 @@ async function test()
     assert.equal(context.document.documentElement.lang, 'en');
     assert.equal(context.document.title, 'STM32F411 Monitor');
     assert.equal(browserStorage.get('stm32f411-language'), 'en');
-    assert.equal(elements.get('spi-send-0').textContent, 'Send');
+    assert.equal(elements.get('spi-send-label-0').textContent, 'Send');
     assert.match(elements.get('spi-message-0').textContent, /sent 4 bytes/);
     assert.equal(field.value, commandBeforeLanguage);
     assert.equal(requests.length, languageRequests);
     await vm.runInContext('update()', context);
     assert.equal(elements.get('led-state').textContent, 'Off');
     elements.get('lang-ru').click();
-    assert.equal(elements.get('spi-send-0').textContent, 'Передать');
+    assert.equal(elements.get('spi-send-label-0').textContent, 'Передать');
     assert.match(elements.get('spi-message-0').textContent, /передано 4 байт/);
     assert.equal(context.document.title, 'Монитор STM32F411');
     elements.get('lang-ja').click();
     assert.equal(context.document.documentElement.lang, 'ja');
     assert.equal(context.document.title, 'STM32F411 モニター');
-    assert.equal(elements.get('spi-send-0').textContent, '送信');
+    assert.equal(elements.get('spi-send-label-0').textContent, '送信');
     assert.match(elements.get('spi-message-0').textContent, /送信済み/);
     assert.equal(elements.get('library-select').children[1].textContent, 'SPI · Default');
     elements.get('lang-ru').click();
@@ -709,7 +750,7 @@ async function test()
         throw new Error('Storage blocked');
     }};
     elements.get('lang-en').click();
-    assert.equal(elements.get('spi-send-0').textContent, 'Send');
+    assert.equal(elements.get('spi-send-label-0').textContent, 'Send');
     elements.get('lang-ru').click();
     pagedCatalog = true;
     elements.get('library-name').value = '日'.repeat(32);
@@ -875,9 +916,9 @@ async function test()
     const namedDraft = vm.runInContext('draftSnapshot()', context);
     elements.get('lang-en').click();
     assert.equal(elements.get('spi-name-1').value, 'Проверка');
-    elements.get('spi-name-0').value = 'A'.repeat(33);
+    elements.get('spi-name-0').value = 'A'.repeat(49);
     elements.get('spi-name-0').input();
-    assert.equal(elements.get('spi-name-0').value.length, 32);
+    assert.equal(elements.get('spi-name-0').value.length, 48);
     elements.get('spi-name-0').value = 'RFIC03';
     elements.get('spi-name-0').input();
     assert.equal(vm.runInContext('draftSnapshot()', context), namedDraft);
@@ -903,6 +944,62 @@ async function test()
     assert.equal(elements.get('spi-name-1').value, 'Changed');
     vm.runInContext('draftDirty = false; showStore(' + JSON.stringify(saved) + ', true)', context);
     assert.equal(elements.get('spi-name-1').value, 'Проверка');
+    systemTimers = true;
+    for (const id of ['calibration-start', 'calibration-end', 'calibration-hours'])
+    {
+        context.document.getElementById(id);
+    }
+    elements.get('lang-ru').click();
+    assert.equal(elements.get('spi-name-left-3').textContent, '16');
+    elements.get('spi-name-0').value = '😀'.repeat(49);
+    elements.get('spi-name-0').input();
+    assert.equal(Array.from(elements.get('spi-name-0').value).length, 48);
+    assert.equal(elements.get('spi-name-left-0').textContent, '0');
+    elements.get('i2c-operation').value = '0';
+    elements.get('i2c-operation').change();
+    elements.get('spi-command-0').value = 'AA BB CC';
+    elements.get('spi-command-0').input();
+    assert.equal(elements.get('spi-send-count-0').textContent, '3 Б');
+    await vm.runInContext("openSystem('calibration')", context);
+    elements.get('calibration-start').value = '0';
+    elements.get('calibration-end').value = '3';
+    elements.get('calibration-hours').value = '24';
+    elements.get('calibration-calculate').click();
+    assert.ok(Number(elements.get('calibration-ppm').value) < -34);
+    assert.ok(Number(elements.get('calibration-ppm').value) > -35);
+    await vm.runInContext('saveSystem(false)', context);
+    assert.equal(systemState.calibration, -36);
+    assert.equal(systemState.sequence, 1);
+    assert.equal(systemApplyCalls, 0);
+    await vm.runInContext('saveSystem(false, true)', context);
+    assert.equal(systemState.calibration, 0);
+    await vm.runInContext("openSystem('network')", context);
+    elements.get('network-ip').value = '172.16.236.221';
+    elements.get('network-port').value = '5026';
+    await vm.runInContext('saveSystem(true)', context);
+    assert.equal(systemState.port, 5026);
+    assert.equal(systemApplyCalls, 1);
+    assert.equal(elements.get('network-reconnect').href, 'http://172.16.236.221:5026/');
+    const settingsWrites = requests.filter(r => r.url === '/api/settings' && r.options.method === 'POST').length;
+    systemFail = true;
+    await vm.runInContext('saveSystem(true)', context);
+    assert.equal(requests.filter(r => r.url === '/api/settings' && r.options.method === 'POST').length, settingsWrites + 1);
+    assert.equal(systemApplyCalls, 1);
+    assert.equal(vm.runInContext('systemWriting', context), false);
+    systemFail = false;
+    ++systemState.sequence;
+    await vm.runInContext('saveSystem(true)', context);
+    assert.equal(systemState.sequence, 4);
+    assert.equal(systemApplyCalls, 1);
+    assert.match(elements.get('network-message').textContent, /другим клиентом/);
+    elements.get('calibration-ppm').value = '1000';
+    await vm.runInContext('saveSystem(false)', context);
+    assert.equal(systemState.sequence, 4);
+    assert.match(elements.get('calibration-message').textContent, /диапазона/);
+    elements.get('network-port').value = '65536';
+    await vm.runInContext('saveSystem(true)', context);
+    assert.equal(systemState.port, 5026);
+    assert.match(elements.get('network-message').textContent, /65535/);
     console.log('Web UI: SPI/I2C switch, isolated drafts, read/write/write-read, named library, NACK/no retry, RU/EN/JA, queue and RTC/ADC/LED passed');
 }
 

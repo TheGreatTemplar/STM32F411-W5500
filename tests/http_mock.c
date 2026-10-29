@@ -37,6 +37,49 @@ static uint32_t library_loads;
 static uint32_t library_deletes;
 static bool library_name_ok;
 
+static bench_settings_t system_settings = {APP_IP_ADDRESS, APP_NETMASK, APP_GATEWAY, APP_HTTP_PORT,
+                                           0};
+static uint32_t system_sequence;
+void command_system_get(bench_settings_t *settings, uint32_t *sequence, bool *busy,
+                        store_error_t *error)
+{
+    if (system_settings.port == 0U)
+    {
+        bench_settings_defaults(&system_settings);
+    }
+    *settings = system_settings;
+    *sequence = system_sequence;
+    *busy = false;
+    *error = STORE_OK;
+}
+bool command_system_saved(void)
+{
+    return system_sequence != 0U;
+}
+
+store_error_t command_system_save(const bench_settings_t *settings, uint32_t sequence)
+{
+    if (sequence != system_sequence)
+    {
+        return STORE_EXISTS;
+    }
+    system_settings = *settings;
+    ++system_sequence;
+    return STORE_OK;
+}
+int32_t rtc_calibration_applied(void)
+{
+    return 0;
+}
+bool rtc_calibration_pending(void)
+{
+    return false;
+}
+uint32_t rtc_calibration_error(void)
+{
+    return 0U;
+}
+
 store_error_t command_library_load(uint32_t id)
 {
     ++library_loads;
@@ -682,5 +725,42 @@ int test_entry(void)
     now = APP_REQUEST_TIMEOUT_MS;
     http_poll(&adc);
     CHECK(state[0] == W5500_CLOSED);
+    prepare("GET /api/settings HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "\"port\":5025") != NULL && strstr(output, "\"calibration\":0") != NULL);
+    {
+        const char body[] = "ip=172.16.236.221\nmask=255.255.255.0\ngateway=172.16.236.1\nport="
+                            "5026\ncal=-36\nseq=0\n";
+        char request[512];
+        snprintf(
+            request, sizeof(request),
+            "POST /api/settings HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
+            (unsigned long)strlen(body), body);
+        prepare(request);
+        pump(&adc);
+        CHECK(strstr(output, "202 OK") != NULL && strstr(output, "\"port\":5026") != NULL);
+        CHECK(system_sequence == 1U && system_settings.calibration == -36);
+        prepare(request); /* Stale sequence must not overwrite saved configuration. */
+        pump(&adc);
+        CHECK(strstr(output, "409 Conflict") != NULL && system_sequence == 1U);
+        {
+            const char apply[] = "ip=172.16.236.221\nmask=255.255.255.0\ngateway=172.16.236."
+                                 "1\nport=5026\ncal=-36\nseq=1\n";
+            snprintf(request, sizeof(request),
+                     "POST /api/settings/apply HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: "
+                     "%lu\r\n\r\n%s",
+                     (unsigned long)strlen(apply), apply);
+            prepare(request);
+            pump(&adc);
+            CHECK(strstr(output, "200 OK") != NULL && bench_network_pending());
+            snprintf(request, sizeof(request),
+                     "POST /api/settings HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: "
+                     "%lu\r\n\r\n%s",
+                     (unsigned long)strlen(apply), apply);
+            prepare(request);
+            pump(&adc);
+            CHECK(strstr(output, "409 Conflict") != NULL && system_sequence == 1U);
+        }
+    }
     return 0;
 }

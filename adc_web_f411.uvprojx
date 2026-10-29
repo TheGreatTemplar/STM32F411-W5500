@@ -456,6 +456,16 @@
               <FilePath>.\src\spi_console.c</FilePath>
             </File>
             <File>
+              <FileName>settings.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\settings.c</FilePath>
+            </File>
+            <File>
+              <FileName>settings.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\settings.h</FilePath>
+            </File>
+            <File>
               <FileName>rtc.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\src\rtc.c</FilePath>

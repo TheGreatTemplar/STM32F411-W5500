@@ -164,7 +164,7 @@ static bool diagnostics_response(http_client_t *client)
         (unsigned long)(diag.retry_100us / 10U), (unsigned long)diag.retry_count,
         (unsigned long)diag.init_attempts, (unsigned long)diag.spi_errors,
         (unsigned long)diag.tx_timeouts, (unsigned long)diag.rx_bytes, (unsigned long)diag.tx_bytes,
-        APP_HTTP_SOCKETS, APP_HTTP_PORT);
+        APP_HTTP_SOCKETS, (unsigned int)bench_settings_active()->port);
     if ((count <= 0) || ((size_t)count >= sizeof(client->body)))
     {
         return false;
@@ -500,10 +500,97 @@ static bool library_response(http_client_t *client, bool command)
                                   "application/json", client->body, used, "");
 }
 
+static const char *request_body(const http_client_t *client, size_t *size)
+{
+    size_t offset;
+    for (offset = 0U; offset + 4U <= client->used; ++offset)
+    {
+        if (memcmp(client->request + offset, "\r\n\r\n", 4U) == 0)
+        {
+            *size = client->used - offset - 4U;
+            return client->request + offset + 4U;
+        }
+    }
+    *size = 0U;
+    return NULL;
+}
+
+static bool settings_response(http_client_t *client, http_route_t route)
+{
+    bench_settings_t saved;
+    const bench_settings_t *active = bench_settings_active();
+    uint32_t sequence;
+    bool busy;
+    store_error_t error;
+    unsigned int status = 200U;
+    char ip[16];
+    char mask[16];
+    char gateway[16];
+    int count;
+    command_system_get(&saved, &sequence, &busy, &error);
+    if (route != HTTP_SETTINGS)
+    {
+        bench_settings_t input;
+        uint32_t expected;
+        size_t size;
+        const char *body = request_body(client, &size);
+        if (!body || !bench_settings_parse(body, size, &input, &expected))
+        {
+            error = STORE_INVALID;
+            status = 400U;
+        }
+        else if (bench_network_pending())
+        {
+            error = STORE_BUSY;
+            status = 409U;
+        }
+        else if (route == HTTP_SAVE_SETTINGS)
+        {
+            error = command_system_save(&input, expected);
+            status = error == STORE_OK ? 202U : 409U;
+        }
+        else if (busy || error != STORE_OK || !command_system_saved() || expected != sequence ||
+                 memcmp(&input, &saved, sizeof(saved)) != 0)
+        {
+            error = STORE_BUSY;
+            status = 409U;
+        }
+        else
+        {
+            bench_network_schedule(&saved);
+        }
+        if (status < 400U)
+        {
+            command_system_get(&saved, &sequence, &busy, &error);
+        }
+    }
+    format_ip(ip, saved.ip);
+    format_ip(mask, saved.mask);
+    format_ip(gateway, saved.gateway);
+    count =
+        snprintf(client->body, sizeof(client->body),
+                 "{\"ip\":\"%s\",\"mask\":\"%s\",\"gateway\":\"%s\",\"port\":%lu,"
+                 "\"calibration\":%ld,\"sequence\":%lu,\"busy\":%s,\"error\":%u,"
+                 "\"cal_pending\":%s,\"cal_applied\":%ld,\"cal_error\":%lu,\"active_port\":%lu}",
+                 ip, mask, gateway, (unsigned long)saved.port, (long)saved.calibration,
+                 (unsigned long)sequence, busy || bench_network_pending() ? "true" : "false",
+                 (unsigned int)error, rtc_calibration_pending() ? "true" : "false",
+                 (long)rtc_calibration_applied(), (unsigned long)rtc_calibration_error(),
+                 (unsigned long)active->port);
+    return count > 0 && (size_t)count < sizeof(client->body) &&
+           response(client, status,
+                    status < 400U ? "OK" : (status == 400U ? "Bad Request" : "Conflict"),
+                    "application/json", client->body, (size_t)count, "");
+}
+
 static bool dispatch(http_client_t *client, http_route_t route, const adc_snapshot_t *adc)
 {
     switch (route)
     {
+    case HTTP_SETTINGS:
+    case HTTP_SAVE_SETTINGS:
+    case HTTP_APPLY_SETTINGS:
+        return settings_response(client, route);
     case HTTP_I2C:
         return i2c_response(client);
     case HTTP_LIBRARY:

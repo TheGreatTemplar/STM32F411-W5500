@@ -5,7 +5,7 @@
 #define MEDIA_BASE 7340032UL
 #define OLD_BASE 524288U
 #define LAST_PAIR (OLD_BASE + 63U * 8192U)
-static uint8_t media[1048576];
+static uint8_t media[1056768];
 static uint32_t now;
 static uint32_t busy_polls;
 static uint32_t writes;
@@ -14,9 +14,15 @@ static bool fail_io;
 static bool unsupported;
 static bool alternate_id;
 
-uint32_t board_millis(void) { return ++now; }
+uint32_t board_millis(void)
+{
+    return ++now;
+}
 
-void board_delay(uint32_t duration) { now += duration; }
+void board_delay(uint32_t duration)
+{
+    now += duration;
+}
 
 bool board_flash_transfer(const uint8_t *prefix, size_t prefix_size, const uint8_t *tx, uint8_t *rx,
                           size_t size)
@@ -71,11 +77,12 @@ bool board_flash_transfer(const uint8_t *prefix, size_t prefix_size, const uint8
         return false;
     }
     address = ((uint32_t)prefix[1] << 16U) | ((uint32_t)prefix[2] << 8U) | prefix[3];
-    if ((address < MEDIA_BASE) || (address >= 8388608UL) || (size > 8388608UL - address))
+    if ((address < MEDIA_BASE - 8192U) || (address >= 8388608UL) || (size > 8388608UL - address))
     {
         return false;
     }
-    offset = address - MEDIA_BASE;
+    offset =
+        address >= MEDIA_BASE ? address - MEDIA_BASE : 1048576U + address - (MEDIA_BASE - 8192U);
     if (prefix[0] == 0x03U)
     {
         memcpy(rx, media + offset, size);
@@ -173,6 +180,25 @@ static uint32_t sized_crc(const uint8_t *data, size_t size)
         }
     }
     return ~crc;
+}
+
+static bool finish_system(void)
+{
+    uint32_t i;
+    for (i = 0U; i < 500U; ++i)
+    {
+        bench_settings_t settings;
+        uint32_t sequence;
+        bool busy;
+        store_error_t error;
+        command_store_poll();
+        command_system_get(&settings, &sequence, &busy, &error);
+        if (!busy)
+        {
+            return error == STORE_OK;
+        }
+    }
+    return false;
 }
 
 int test_entry(void);
@@ -435,7 +461,7 @@ int test_entry(void)
     {
         uint8_t *record = media + OLD_BASE + i * 4096U;
         uint32_t word;
-        if (record[4] != 4U)
+        if (record[4] != 5U)
         {
             continue;
         }
@@ -529,12 +555,30 @@ int test_entry(void)
             "\nnames=6,16,9,11\nRFIC03Проверка日本語RD / status";
         const char i2c_named[] = "bus=1 hz=100000 addr=8 op=1 read=2 format=hex\nlengths=0,0,0,0\n"
                                  "\nnames=6,0,0,0\nRead 2";
-        const char *bad_names[] = {"\nnames=1,0,0,0\n\001", "\nnames=2,0,0,0\n\xC0\xAF",
-                                   "\nnames=4,0,0,0\n\xF4\x90\x80\x80", "\nnames=2,0,0,0\nA",
-                                   "\nnames=33,0,0,0\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"};
+        const char *bad_names[] = {
+            "\nnames=1,0,0,0\n\001", "\nnames=2,0,0,0\n\xC0\xAF",
+            "\nnames=4,0,0,0\n\xF4\x90\x80\x80", "\nnames=2,0,0,0\nA",
+            "\nnames=49,0,0,0\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"};
         CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Named", 5U, named, sizeof(named) - 1U) ==
               STORE_OK);
         CHECK(finish_save());
+        /* Convert the new record to genuine v4 bytes before testing upgrade. */
+        {
+            uint8_t *record = media + OLD_BASE;
+            uint32_t word = 4U;
+            uint32_t n;
+            for (n = 0U; n < 4U; ++n)
+            {
+                uint32_t bytes;
+                memcpy(&bytes, record + 3284U + n * 4U, 4U);
+                memmove(record + 3300U + n * 128U, record + 3300U + n * 192U, bytes);
+            }
+            memcpy(record + 4U, &word, 4U);
+            word = 3812U - 24U;
+            memcpy(record + 12U, &word, 4U);
+            word = sized_crc(record, 3812U);
+            memcpy(record + 16U, &word, 4U);
+        }
         init_store();
         CHECK(command_library_load(0U) == STORE_OK);
         CHECK(command_store_json(json, sizeof(json)) != 0U);
@@ -560,7 +604,7 @@ int test_entry(void)
     {
         const char *header =
             "bus=2 mode=0 hz=25000000 lsb=0 cs_high=0 format=hex\nlengths=768,768,768,768\n";
-        const char *names = "\nnames=128,128,128,128\n";
+        const char *names = "\nnames=192,192,192,192\n";
         size_t length = strlen(header);
         memcpy(maximum, header, length);
         for (i = 0U; i < 3072U; i += 3U)
@@ -570,11 +614,11 @@ int test_entry(void)
         length += 3072U;
         memcpy(maximum + length, names, strlen(names));
         length += strlen(names);
-        for (i = 0U; i < 512U; i += 4U)
+        for (i = 0U; i < 768U; i += 4U)
         {
             memcpy(maximum + length + i, "\xF0\x9F\x98\x80", 4U);
         }
-        length += 512U;
+        length += 768U;
         CHECK(command_library_save(0U, "Named", 5U, maximum, length) == STORE_OK);
         CHECK(finish_save());
         init_store();
@@ -591,6 +635,89 @@ int test_entry(void)
         CHECK(command_library_load(0U) == STORE_OK);
         CHECK(command_store_json(json, sizeof(json)) != 0U &&
               strstr(json, "\xF0\x9F\x98\x80") != NULL);
+    }
+    memset(media, 0xFF, sizeof(media));
+    init_store();
+    {
+        bench_settings_t settings;
+        bench_settings_t loaded;
+        uint32_t sequence;
+        bool busy;
+        store_error_t error;
+        bench_settings_defaults(&settings);
+        CHECK(bench_settings_valid(&settings));
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(sequence == 0U && error == STORE_OK && !busy);
+        settings.ip[3] = 221U;
+        settings.port = 5026U;
+        settings.calibration = -36;
+        CHECK(command_system_save(&settings, 0U) == STORE_OK);
+        CHECK(command_library_save(0U, "Safe", 4U, a, sizeof(a) - 1U) == STORE_BUSY);
+        command_store_poll();
+        init_store();
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(sequence == 0U && loaded.ip[3] == 220U);
+        CHECK(command_system_save(&settings, 0U) == STORE_OK);
+        CHECK(finish_system());
+        init_store();
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(sequence == 1U && loaded.ip[3] == 221U && loaded.port == 5026U &&
+              loaded.calibration == -36);
+        CHECK(command_system_save(&settings, 0U) == STORE_EXISTS);
+        settings.ip[3] = 222U;
+        settings.calibration = 512;
+        CHECK(command_system_save(&settings, 1U) == STORE_OK);
+        for (i = 0U; i < 9U; ++i)
+        {
+            command_store_poll();
+        }
+        init_store();
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(sequence == 1U && loaded.ip[3] == 221U && loaded.calibration == -36);
+        CHECK(command_system_save(&settings, 1U) == STORE_OK);
+        CHECK(finish_system());
+        init_store();
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(sequence == 2U && loaded.ip[3] == 222U && loaded.calibration == 512);
+        media[1048576U + 4096U + 24U] ^= 1U;
+        init_store();
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(sequence == 1U && loaded.ip[3] == 221U);
+        CHECK(command_system_save(&settings, 1U) == STORE_OK);
+        CHECK(finish_system());
+        CHECK(command_system_save(&settings, 2U) == STORE_OK);
+        fail_io = true;
+        command_store_poll();
+        fail_io = false;
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(!busy && error == STORE_IO && sequence == 2U);
+        init_store();
+
+        CHECK(command_library_save(0U, "Safe", 4U, a, sizeof(a) - 1U) == STORE_OK);
+        CHECK(finish_save());
+        command_system_get(&loaded, &sequence, &busy, &error);
+        CHECK(sequence == 2U && loaded.port == 5026U);
+        settings.mask[2] = 250U;
+        CHECK(!bench_settings_valid(&settings));
+        CHECK(command_system_save(&settings, 2U) == STORE_INVALID);
+        bench_settings_defaults(&settings);
+        settings.ip[3] = 0U;
+        CHECK(!bench_settings_valid(&settings));
+        settings.ip[3] = 255U;
+        CHECK(!bench_settings_valid(&settings));
+        bench_settings_defaults(&settings);
+        settings.gateway[2] = 235U;
+        CHECK(!bench_settings_valid(&settings));
+        memset(settings.gateway, 0, 4U);
+        CHECK(bench_settings_valid(&settings));
+        settings.calibration = -512;
+        CHECK(!bench_settings_valid(&settings));
+        memset(media + 1048576U, 0x5A, 8192U);
+        init_store();
+        settings.calibration = 0;
+        before = writes;
+        CHECK(command_system_save(&settings, 0U) == STORE_FOREIGN_DATA);
+        CHECK(writes == before && media[1048576U] == 0x5AU);
     }
     return 0;
 }

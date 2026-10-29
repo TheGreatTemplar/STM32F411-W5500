@@ -148,6 +148,10 @@ http_route_t http_parse(const char *request, size_t size)
         return HTTP_BAD_REQUEST;
     }
     path_size = (size_t)(version - path);
+    if (!post && path_size == 13U && memcmp(path, "/api/settings", 13U) == 0)
+    {
+        return HTTP_SETTINGS;
+    }
     if (!post && path_size == 12U && memcmp(path, "/api/library", 12U) == 0)
     {
         return HTTP_LIBRARY;
@@ -160,7 +164,9 @@ http_route_t http_parse(const char *request, size_t size)
     {
         return HTTP_COMMANDS;
     }
-    if (((path_size == 11U) && (memcmp(path, "/api/led/on", 11U) == 0)) ||
+    if ((path_size == 19U && memcmp(path, "/api/settings/apply", 19U) == 0) ||
+        (path_size == 13U && memcmp(path, "/api/settings", 13U) == 0) ||
+        ((path_size == 11U) && (memcmp(path, "/api/led/on", 11U) == 0)) ||
         ((path_size == 12U) && (memcmp(path, "/api/led/off", 12U) == 0)) ||
         ((path_size == 8U) && (memcmp(path, "/api/spi", 8U) == 0)) ||
         ((path_size == 15U) && (memcmp(path, "/api/spi/config", 15U) == 0)) ||
@@ -170,7 +176,8 @@ http_route_t http_parse(const char *request, size_t size)
         ((path_size == 13U) && (memcmp(path, "/api/commands", 13U) == 0)))
     {
         size_t body_size;
-        const bool payload = (path_size == 15U) || (path_size == 8U) || (path_size == 13U) ||
+        const bool payload = (path_size == 19U) || (path_size == 15U) || (path_size == 8U) ||
+                             (path_size == 13U) ||
                              (path_size == 12U && memcmp(path, "/api/library", 12U) == 0);
         if (!post)
         {
@@ -192,6 +199,14 @@ http_route_t http_parse(const char *request, size_t size)
         }
         if (payload)
         {
+            if (path_size == 19U)
+            {
+                return HTTP_APPLY_SETTINGS;
+            }
+            if (path_size == 13U && memcmp(path, "/api/settings", 13U) == 0)
+            {
+                return HTTP_SAVE_SETTINGS;
+            }
             if (path_size == 15U)
             {
                 return HTTP_SPI_CONFIG;

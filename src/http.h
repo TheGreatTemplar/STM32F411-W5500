@@ -25,7 +25,10 @@ typedef enum
     HTTP_LIBRARY,
     HTTP_LIBRARY_COMMAND,
     HTTP_I2C,
-    HTTP_SPI_CONFIG
+    HTTP_SPI_CONFIG,
+    HTTP_SETTINGS,
+    HTTP_SAVE_SETTINGS,
+    HTTP_APPLY_SETTINGS
 } http_route_t;
 
 typedef struct

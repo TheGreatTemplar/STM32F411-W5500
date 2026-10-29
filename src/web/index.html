@@ -66,18 +66,18 @@
         .spi-title .hint { margin: 0; }
         .vertical-options { display: flex; flex-direction: column; justify-content: center; gap: 4px; }
         .command-card { padding: 15.3px 0; border-top: 1px solid #2b4052; }
-        .command-editor { display: grid; grid-template-columns: minmax(0,1fr) 120px; gap: 16px; align-items: start; margin-top: 8px; }
+        .command-editor { display: grid; grid-template-columns: minmax(0,1fr) 172px; gap: 16px; align-items: start; margin-top: 8px; }
         .command-editor button { padding: 8.5px 11.9px; }
         .result-title { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: 13px; }
         .result-title .hint { margin: 0; }
         .command-card .spi-output { margin: 6px 0; font-size: 13px; }
         .input-error { background: #ffe082; color: #332600 !important; padding: 6px 10px; border-radius: 6px; }
-        .command-heading { display: grid; grid-template-columns: minmax(0,62%) minmax(0,1fr); gap: 16px; align-items: center; height: 44px; }
+        .command-heading { display: grid; grid-template-columns: minmax(340px,62%) minmax(0,1fr); gap: 16px; align-items: center; height: 44px; }
         .command-heading label { font-size: 14px; line-height: 20px; white-space: nowrap; }
-        .command-label { display: grid; grid-template-columns: 84px minmax(65px,1fr) 135px; align-items: center; gap: 8px; min-width: 0; }
+        .command-label { display: grid; grid-template-columns: 82px 132px minmax(65px,1fr) 24px; align-items: center; gap: 8px; min-width: 0; }
         .command-label .hint { white-space: nowrap; }
         .command-name { width: 100%; min-width: 65px; height: 30px; padding: 4px 8px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; font: inherit; font-size: 14px; }
-        @media (max-width: 420px) { .command-label { grid-template-columns: 76px minmax(65px,1fr) 112px; gap: 6px; } .command-label .hint { font-size: 11px; } .command-heading label { font-size: 12px; } }
+        @media (max-width: 420px) { .command-label { grid-template-columns: 68px 105px minmax(65px,1fr) 20px; gap: 6px; } .command-label .hint { font-size: 11px; } .command-heading label { font-size: 12px; } }
         .command-message { height: 32px; min-height: 0; line-height: 20px; font-size: 13px; margin: 0; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .library-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; width: 326px; flex: none; height: 36px; }
         .library-controls button { min-width: 0; height: 36px; padding: 5px 8px; font-size: 14px; white-space: nowrap; }
@@ -147,6 +147,40 @@
         th { color: #a6b7c7; }
         #diag-message { min-height: 24px; }
         footer { margin-top: 24px; font-size: 13px; }
+        .name-remaining { font-size: 13px; color: #a6b7c7; font-variant-numeric: tabular-nums; text-align: right; }
+        .command-editor button { height: 36px; white-space: nowrap; display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 14px; }
+        .command-editor button > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .send-count { font-size: 12px; font-weight: 400; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .command-card .spi-output { min-height: calc(1.275em + 16.15px); height: calc(1.275em + 16.15px); padding: 5.6px 8.5px; }
+        .details { padding-top: 16.1px; padding-bottom: 16.1px; align-items: center; }
+        .details strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #network-open { width: 150px; flex: none; margin-left: auto; padding: 7px 12px; font-size: 14px; white-space: nowrap; }
+        @media (min-width: 901px) { .details { display: grid; grid-template-columns: minmax(220px,1.6fr) repeat(3,minmax(0,1fr)) 150px; gap: 18px; } }
+        .rtc-control { display: grid; grid-template-columns: minmax(0,1fr) 140px; grid-template-rows: 24px 1fr; gap: 4px 16px; height: 116px; padding: 6px 20.4px; }
+        .rtc-header { display: contents; }
+        .rtc-title { grid-column: 1; grid-row: 1; gap: 10px; flex-wrap: nowrap; }
+        .rtc-title h2 { white-space: nowrap; }
+        #rtc-message { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .rtc-reading { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+        .rtc-settings { grid-column: 1; grid-row: 2; margin: 0; gap: 10px; flex-wrap: nowrap; align-items: flex-end; }
+        .rtc-settings label { flex-direction: column; align-items: flex-start; gap: 2px; font-size: 13px; }
+        .rtc-settings input { height: 30px; padding: 3px 6px; font-size: 14px; }
+        .rtc-button-column { display: grid; gap: 4px; width: 110px; flex: none; }
+        .rtc-button-column:last-child { width: 216px; }
+        #rtc-network { cursor: not-allowed; }
+        .rtc-button-column button { height: 30px; padding: 3px 8px; font-size: 13px; white-space: nowrap; }
+        @media (max-width: 900px) { .rtc-control { height: auto; min-height: 116px; display: block; padding: 10px 16px; } .rtc-header { display: flex; } .rtc-title { flex-wrap: wrap; } .rtc-settings { margin-top: 8px; flex-wrap: wrap; } }
+        .system-dialog { width: min(720px,calc(100% - 24px)); height: min(460px,90vh); overflow: auto; scrollbar-gutter: stable; }
+        #network-settings { height: min(480px,90vh); }
+        .system-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 20px 0; }
+        .system-fields label { display: grid; gap: 5px; font-size: 14px; }
+        .system-fields input { width: 100%; min-width: 0; height: 34px; padding: 5px 8px; border: 1px solid #476273; border-radius: 8px; background: #101923; color: #e9eff5; font: inherit; }
+        .system-dialog .hint { margin: 10px 0; }
+        .system-message { height: 78px; padding: 6px 10px; font-size: 13px; line-height: 22px; overflow: auto; margin: 12px 0; }
+        .system-dialog .buttons { flex-wrap: wrap; }
+        .system-dialog button { padding: 7px 12px; font-size: 14px; }
+        #network-reconnect { display: block; height: 24px; color: #6ed8c4; }
+        @media (max-width: 520px) { .system-fields { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -159,15 +193,15 @@
             <div>Адрес<strong id="address">172.16.236.220:5025 · —</strong></div>
             <div>Время работы<strong id="uptime">—</strong></div>
             <div>Измерений<strong id="samples">—</strong></div>
-            <div>Опорное напряжение<strong id="vref">—</strong></div>
+            <div>Опорное напряжение<strong id="vref">—</strong></div><button type="button" id="network-open">Сменить адрес</button>
         </section>
         <section class="rtc-control" aria-label="Часы микроконтроллера">
             <div class="rtc-header"><div class="rtc-title"><h2>Часы стенда · RTC / LSE</h2><span id="rtc-message" role="status">Запуск LSE…</span></div><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
             <div class="rtc-settings">
                 <label>Дата<input type="date" id="rtc-input-date" min="2000-01-01" max="2099-12-31"></label>
                 <label>Время<input type="time" id="rtc-input-time" step="1"></label>
-                <button type="button" id="rtc-set" disabled>Установить</button>
-                <button type="button" id="rtc-sync" disabled>Синхронизировать с ПК</button>
+                <div class="rtc-button-column"><button type="button" id="calibration-open">Калибровка</button><button type="button" id="rtc-set" disabled>Установить</button></div>
+                <div class="rtc-button-column"><button type="button" id="rtc-network" disabled title="Будет добавлено позже">Синхронизировать по сети</button><button type="button" id="rtc-sync" disabled>Синхронизировать с ПК</button></div>
             </div>
         </section>
         <section class="spi-control" aria-label="Консоль шин">
@@ -204,32 +238,57 @@
             </div>
             <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
             <div class="command-card">
-                <div class="command-heading"><div class="command-label"><label for="spi-command-0">Команда 1</label><input type="text" class="command-name" id="spi-name-0" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 1, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-0" class="command-message" role="status"></p></div>
-                <div class="command-editor"><textarea rows="1" id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-0">Команда 1</label><span class="hint">(до 256 байт)</span><input type="text" class="command-name" id="spi-name-0" maxlength="96" spellcheck="false" autocomplete="off" aria-label="Имя команды 1, до 48 символов"><span class="name-remaining" id="spi-name-left-0" title="Осталось символов">48</span></div><p id="spi-message-0" class="command-message" role="status"></p></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0"><span id="spi-send-label-0">Передать</span><span class="send-count" id="spi-send-count-0">0 Б</span></button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-0" readonly aria-label="TX команды 1">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-0">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-0" readonly aria-label="RX команды 1">—</textarea>
             </div>
             <div class="command-card">
-                <div class="command-heading"><div class="command-label"><label for="spi-command-1">Команда 2</label><input type="text" class="command-name" id="spi-name-1" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 2, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-1" class="command-message" role="status"></p></div>
-                <div class="command-editor"><textarea rows="1" id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1">Передать</button></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-1">Команда 2</label><span class="hint">(до 256 байт)</span><input type="text" class="command-name" id="spi-name-1" maxlength="96" spellcheck="false" autocomplete="off" aria-label="Имя команды 2, до 48 символов"><span class="name-remaining" id="spi-name-left-1" title="Осталось символов">48</span></div><p id="spi-message-1" class="command-message" role="status"></p></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1"><span id="spi-send-label-1">Передать</span><span class="send-count" id="spi-send-count-1">0 Б</span></button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-1" readonly aria-label="TX команды 2">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-1">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-1" readonly aria-label="RX команды 2">—</textarea>
             </div>
             <div class="command-card">
-                <div class="command-heading"><div class="command-label"><label for="spi-command-2">Команда 3</label><input type="text" class="command-name" id="spi-name-2" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 3, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-2" class="command-message" role="status"></p></div>
-                <div class="command-editor"><textarea rows="1" id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2">Передать</button></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-2">Команда 3</label><span class="hint">(до 256 байт)</span><input type="text" class="command-name" id="spi-name-2" maxlength="96" spellcheck="false" autocomplete="off" aria-label="Имя команды 3, до 48 символов"><span class="name-remaining" id="spi-name-left-2" title="Осталось символов">48</span></div><p id="spi-message-2" class="command-message" role="status"></p></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2"><span id="spi-send-label-2">Передать</span><span class="send-count" id="spi-send-count-2">0 Б</span></button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-2" readonly aria-label="TX команды 3">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-2">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-2" readonly aria-label="RX команды 3">—</textarea>
             </div>
             <div class="command-card">
-                <div class="command-heading"><div class="command-label"><label for="spi-command-3">Команда 4</label><input type="text" class="command-name" id="spi-name-3" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 4, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-3" class="command-message" role="status"></p></div>
-                <div class="command-editor"><textarea rows="1" id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3">Передать</button></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-3">Команда 4</label><span class="hint">(до 256 байт)</span><input type="text" class="command-name" id="spi-name-3" maxlength="96" spellcheck="false" autocomplete="off" aria-label="Имя команды 4, до 48 символов"><span class="name-remaining" id="spi-name-left-3" title="Осталось символов">48</span></div><p id="spi-message-3" class="command-message" role="status"></p></div>
+                <div class="command-editor"><textarea rows="1" id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3"><span id="spi-send-label-3">Передать</span><span class="send-count" id="spi-send-count-3">0 Б</span></button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-3" readonly aria-label="TX команды 4">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-3">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
             </div>
         </section>
 
     </main>
+    <dialog id="network-settings" class="system-dialog" aria-labelledby="network-title">
+        <div class="library-header"><h2 id="network-title">Сетевые настройки</h2><button type="button" id="network-close">Закрыть</button></div>
+        <div class="system-fields">
+            <label>IP-адрес<input id="network-ip" maxlength="15" inputmode="decimal"></label>
+            <label>Маска<input id="network-mask" maxlength="15" inputmode="decimal"></label>
+            <label>Шлюз<input id="network-gateway" maxlength="15" inputmode="decimal"></label>
+            <label>HTTP-порт<input id="network-port" type="number" min="1" max="65535" step="1"></label>
+        </div>
+        <p class="hint">Статический IPv4. Шлюз 0.0.0.0 отключает маршрутизацию. Маска /1–/30. Сначала запись Flash, затем смена адреса через 2 секунды.</p>
+        <button type="button" id="network-save" disabled>Сохранить и применить</button>
+        <p id="network-message" class="system-message" role="status"></p>
+        <a id="network-reconnect" hidden target="_blank" rel="noopener"></a>
+    </dialog>
+    <dialog id="calibration-dialog" class="system-dialog" aria-labelledby="calibration-title">
+        <div class="library-header"><h2 id="calibration-title">Калибровка RTC / LSE</h2><button type="button" id="calibration-close">Закрыть</button></div>
+        <div class="system-fields">
+            <label>Поправка, ppm<input id="calibration-ppm" type="number" step="0.001" min="-487.1" max="488.6"></label>
+            <label>Интервал измерения, ч<input id="calibration-hours" type="number" min="1" step="1" value="24"></label>
+            <label>Начальное расхождение, с<input id="calibration-start" type="number" step="0.001" value="0"></label>
+            <label>Конечное расхождение, с<input id="calibration-end" type="number" step="0.001" value="0"></label>
+        </div>
+        <p class="hint">Расхождение = RTC − эталон. Между замерами не менять время и поправку. Для сравнения по целым секундам измерять 3–7 суток.</p>
+        <div class="buttons"><button type="button" id="calibration-calculate">Рассчитать по уходу</button><button type="button" id="calibration-save" disabled>Сохранить и применить</button><button type="button" id="calibration-reset" disabled>Сбросить поправку</button></div>
+        <p id="calibration-message" class="system-message" role="status"></p>
+    </dialog>
     <dialog id="command-library" aria-labelledby="library-title">
         <div class="library-header"><h2 id="library-title">Библиотека команд</h2><button type="button" id="library-close">Закрыть</button></div>
         <div class="library-fields">
@@ -296,8 +355,48 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Сменить адрес": "Change address",
+            "Калибровка": "Calibration",
+            "Синхронизировать по сети": "Synchronize over network",
+            "Будет добавлено позже": "To be added later",
+            "Осталось символов": "Characters remaining",
+            "Сетевые настройки": "Network settings",
+            "IP-адрес": "IP address",
+            "HTTP-порт": "HTTP port",
+            "Сохранить и применить": "Save and apply",
+            "Калибровка RTC / LSE": "RTC / LSE calibration",
+            "Поправка, ppm": "Correction, ppm",
+            "Интервал измерения, ч": "Measurement interval, h",
+            "Начальное расхождение, с": "Initial offset, s",
+            "Конечное расхождение, с": "Final offset, s",
+            "Рассчитать по уходу": "Calculate from drift",
+            "Сбросить поправку": "Reset correction",
+            "Чтение настроек…": "Reading settings…",
+            "Параметры прочитаны. DHCP отключён.": "Settings loaded. DHCP is disabled.",
+            "Не удалось изменить настройки.": "Could not change settings.",
+            "Настройки изменены другим клиентом. Открой окно заново.": "Settings changed by another client. Reopen this dialog.",
+            "Некорректная поправка.": "Invalid correction.",
+            "Поправка вне диапазона RTC: −487,1…+488,5 ppm.": "Correction exceeds RTC range: −487.1…+488.5 ppm.",
+            "Применённая поправка:": "Applied correction:",
+            "Ожидание готовности RTC…": "Waiting for RTC…",
+            "шаг ≈ 0,954 ppm · окно 32 с": "step ≈ 0.954 ppm · 32 s window",
+            "Поправка сохранена, но RTC не применил её. Проверь LSE или повтори применение.": "Correction saved but not applied by RTC. Check LSE or apply again.",
+            "Нет подтверждения операции. Проверь связь и открой окно заново.": "Operation not confirmed. Check the connection and reopen this dialog.",
+            "Укажи IPv4 в формате 172.16.236.220.": "Enter an IPv4 address such as 172.16.236.220.",
+            "Порт: целое число от 1 до 65535.": "Port: integer from 1 to 65535.",
+            "Укажи поправку в ppm.": "Enter a correction in ppm.",
+            "Нет подтверждения сохранения. Открой окно заново.": "Save not confirmed. Reopen this dialog.",
+            "Сохранено. Адрес изменится через 2 секунды. Открой ссылку ниже; ПК должен быть в доступной подсети.": "Saved. Address changes in 2 seconds. Open the link below; the PC needs access to that subnet.",
+            "Поправка сохранена. Нет подтверждения применения RTC; проверь состояние позже.": "Correction saved. RTC application not confirmed; check later.",
+            "Нет подтверждения операции. Проверь состояние перед повтором.": "Operation not confirmed. Check state before retrying.",
+            "Проверь расхождение и интервал измерения.": "Check offsets and measurement interval.",
+            "Расчёт готов. Для записи нажми «Сохранить и применить».": "Calculated. Press Save and apply to store it.",
+            "Б": "B",
+            "Проверь IP, маску, шлюз и порт.": "Check IP address, subnet mask, gateway and port.",
+            "Статический IPv4. Шлюз 0.0.0.0 отключает маршрутизацию. Маска /1–/30. Сначала запись Flash, затем смена адреса через 2 секунды.": "Static IPv4. Gateway 0.0.0.0 disables routing. Mask /1–/30. Flash is saved first; address changes after 2 seconds.",
+            "Расхождение = RTC − эталон. Между замерами не менять время и поправку. Для сравнения по целым секундам измерять 3–7 суток.": "Offset = RTC − reference. Do not change time or correction between measurements. With whole-second comparisons, measure for 3–7 days.",
             "до 256 байт": "up to 256 bytes",
-            "Имя команды: до 32 символов, без управляющих символов.": "Command name: up to 32 characters, without control characters.",
+            "Имя команды: до 48 символов, без управляющих символов.": "Command name: up to 48 characters, without control characters.",
             "Перенос наборов I2C…": "Migrating I2C sets…",
             "Диагностика STM32F411": "STM32F411 diagnostics",
             "Применение настроек SPI…": "Applying SPI settings…",
@@ -488,19 +587,19 @@
             "запись №": "record no.",
             "Выбор языка": "Language",
             "Русский": "Russian",
-            "Имя команды 1, до 32 символов": "Command 1 name, up to 32 characters",
+            "Имя команды 1, до 48 символов": "Command 1 name, up to 48 characters",
             "SPI-команда 1": "SPI command 1",
             "RX команды 1": "Command 1 RX",
             "TX команды 1": "Command 1 TX",
-            "Имя команды 2, до 32 символов": "Command 2 name, up to 32 characters",
+            "Имя команды 2, до 48 символов": "Command 2 name, up to 48 characters",
             "SPI-команда 2": "SPI command 2",
             "RX команды 2": "Command 2 RX",
             "TX команды 2": "Command 2 TX",
-            "Имя команды 3, до 32 символов": "Command 3 name, up to 32 characters",
+            "Имя команды 3, до 48 символов": "Command 3 name, up to 48 characters",
             "SPI-команда 3": "SPI command 3",
             "RX команды 3": "Command 3 RX",
             "TX команды 3": "Command 3 TX",
-            "Имя команды 4, до 32 символов": "Command 4 name, up to 32 characters",
+            "Имя команды 4, до 48 символов": "Command 4 name, up to 48 characters",
             "SPI-команда 4": "SPI command 4",
             "RX команды 4": "Command 4 RX",
             "TX команды 4": "Command 4 TX",
@@ -546,8 +645,48 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Сменить адрес": "アドレス変更",
+            "Калибровка": "校正",
+            "Синхронизировать по сети": "ネットワーク同期",
+            "Будет добавлено позже": "今後追加予定",
+            "Осталось символов": "残り文字数",
+            "Сетевые настройки": "ネットワーク設定",
+            "IP-адрес": "IPアドレス",
+            "HTTP-порт": "HTTPポート",
+            "Сохранить и применить": "保存して適用",
+            "Калибровка RTC / LSE": "RTC / LSE 校正",
+            "Поправка, ppm": "補正値、ppm",
+            "Интервал измерения, ч": "測定間隔、時間",
+            "Начальное расхождение, с": "初期時刻差、秒",
+            "Конечное расхождение, с": "最終時刻差、秒",
+            "Рассчитать по уходу": "時刻ずれから計算",
+            "Сбросить поправку": "補正をリセット",
+            "Чтение настроек…": "設定を読み込み中…",
+            "Параметры прочитаны. DHCP отключён.": "設定を読み込みました。DHCPは無効です。",
+            "Не удалось изменить настройки.": "設定を変更できませんでした。",
+            "Настройки изменены другим клиентом. Открой окно заново.": "別のクライアントが設定を変更しました。画面を開き直してください。",
+            "Некорректная поправка.": "補正値が無効です。",
+            "Поправка вне диапазона RTC: −487,1…+488,5 ppm.": "補正値はRTC範囲（−487.1～+488.5 ppm）外です。",
+            "Применённая поправка:": "適用済み補正値:",
+            "Ожидание готовности RTC…": "RTCの準備完了を待っています…",
+            "шаг ≈ 0,954 ppm · окно 32 с": "刻み ≈ 0.954 ppm・周期32秒",
+            "Поправка сохранена, но RTC не применил её. Проверь LSE или повтори применение.": "補正値は保存済みですがRTCに未適用です。LSEを確認するか再適用してください。",
+            "Нет подтверждения операции. Проверь связь и открой окно заново.": "処理を確認できません。接続を確認して画面を開き直してください。",
+            "Укажи IPv4 в формате 172.16.236.220.": "172.16.236.220形式のIPv4アドレスを入力してください。",
+            "Порт: целое число от 1 до 65535.": "ポートは1～65535の整数です。",
+            "Укажи поправку в ppm.": "補正値をppmで入力してください。",
+            "Нет подтверждения сохранения. Открой окно заново.": "保存を確認できません。画面を開き直してください。",
+            "Сохранено. Адрес изменится через 2 секунды. Открой ссылку ниже; ПК должен быть в доступной подсети.": "保存済み。2秒後にアドレスが変わります。PCが新サブネットに接続可能な状態で下のリンクを開いてください。",
+            "Поправка сохранена. Нет подтверждения применения RTC; проверь состояние позже.": "補正値は保存済み。RTCへの適用を確認できません。後で確認してください。",
+            "Нет подтверждения операции. Проверь состояние перед повтором.": "処理を確認できません。再試行前に状態を確認してください。",
+            "Проверь расхождение и интервал измерения.": "時刻差と測定間隔を確認してください。",
+            "Расчёт готов. Для записи нажми «Сохранить и применить».": "計算完了。「保存して適用」で書き込みます。",
+            "Б": "バイト",
+            "Проверь IP, маску, шлюз и порт.": "IP、マスク、ゲートウェイ、ポートを確認してください。",
+            "Статический IPv4. Шлюз 0.0.0.0 отключает маршрутизацию. Маска /1–/30. Сначала запись Flash, затем смена адреса через 2 секунды.": "固定IPv4。ゲートウェイ0.0.0.0でルーティング無効。マスク/1～/30。Flash保存後、2秒でアドレス変更。",
+            "Расхождение = RTC − эталон. Между замерами не менять время и поправку. Для сравнения по целым секундам измерять 3–7 суток.": "時刻差＝RTC−基準。測定間は時刻と補正値を変更しないでください。秒単位の比較では3～7日測定してください。",
             "до 256 байт": "最大 256 バイト",
-            "Имя команды: до 32 символов, без управляющих символов.": "コマンド名は32文字以内で、制御文字は使用できません。",
+            "Имя команды: до 48 символов, без управляющих символов.": "コマンド名は48文字以内で、制御文字は使用できません。",
             "Перенос наборов I2C…": "I2C セットを移行中…",
             "Диагностика STM32F411": "STM32F411 診断",
             "Применение настроек SPI…": "SPI 設定を適用中…",
@@ -738,19 +877,19 @@
             "запись №": "レコード番号",
             "Выбор языка": "言語",
             "Русский": "ロシア語",
-            "Имя команды 1, до 32 символов": "コマンド 1 名、32文字以内",
+            "Имя команды 1, до 48 символов": "コマンド 1 名、48文字以内",
             "SPI-команда 1": "SPI コマンド 1",
             "RX команды 1": "コマンド 1 RX",
             "TX команды 1": "コマンド 1 TX",
-            "Имя команды 2, до 32 символов": "コマンド 2 名、32文字以内",
+            "Имя команды 2, до 48 символов": "コマンド 2 名、48文字以内",
             "SPI-команда 2": "SPI コマンド 2",
             "RX команды 2": "コマンド 2 RX",
             "TX команды 2": "コマンド 2 TX",
-            "Имя команды 3, до 32 символов": "コマンド 3 名、32文字以内",
+            "Имя команды 3, до 48 символов": "コマンド 3 名、48文字以内",
             "SPI-команда 3": "SPI コマンド 3",
             "RX команды 3": "コマンド 3 RX",
             "TX команды 3": "コマンド 3 TX",
-            "Имя команды 4, до 32 символов": "コマンド 4 名、32文字以内",
+            "Имя команды 4, до 48 символов": "コマンド 4 名、48文字以内",
             "SPI-команда 4": "SPI コマンド 4",
             "RX команды 4": "コマンド 4 RX",
             "TX команды 4": "コマンド 4 TX",
@@ -808,7 +947,7 @@
         {
             const raw = String(value);
             element.textContent = translate(raw);
-            if (element.id === 'store-status' || element.id === 'rtc-message')
+            if (element.id === 'store-status' || element.id === 'rtc-message' || element.id === 'address')
             {
                 originalAttributes.set(element, {title: raw});
                 element.setAttribute('title', translate(raw));
@@ -922,10 +1061,11 @@
         }
         function spiButtons()
         {
+            updateCommandCounts();
             for (let i = 0; i < 4; ++i)
             {
                 get('spi-send-' + i).disabled = pendingSpi.length >= 4;
-                setText(get('spi-send-' + i), pendingSpi.length >= 4 ? 'Очередь полна' :
+                setText(get('spi-send-label-' + i), pendingSpi.length >= 4 ? 'Очередь полна' :
                     (spiBusy || pendingSpi.length ? 'В очередь' : 'Передать'));
             }
             busButtons();
@@ -1078,6 +1218,17 @@
             get('bus-spi').disabled = busy;
             get('bus-i2c').disabled = busy;
         }
+        function updateCommandCounts()
+        {
+            for (let i = 0; i < 4; ++i)
+            {
+                setText(get('spi-name-left-' + i), String(Math.max(0, 48 - Array.from(get('spi-name-' + i).value || '').length)));
+                const text = commandText(i);
+                const error = validateText(text, true);
+                const count = error ? '—' : String(get('spi-format').value === 'hex' ? text.replace(/\s/g, '').length / 2 : text.length);
+                setText(get('spi-send-count-' + i), count + ' Б');
+            }
+        }
         function captureConsole()
         {
             const ids = ['spi-hz', 'spi-format', 'i2c-hz', 'i2c-address', 'i2c-operation', 'i2c-read', 'library-name'];
@@ -1169,6 +1320,7 @@
             }
             renderLibrary();
             i2cMode();
+            updateCommandCounts();
             libraryButtons();
             spiButtons();
             queueSpiConfig();
@@ -1206,11 +1358,13 @@
             get(id).addEventListener('input', () =>
             {
                 i2cMode();
+            updateCommandCounts();
                 markDirty();
             });
             get(id).addEventListener('change', () =>
             {
                 i2cMode();
+            updateCommandCounts();
                 markDirty();
             });
         }
@@ -1330,11 +1484,11 @@
         function commandNameError(value)
         {
             const chars = Array.from(value);
-            return chars.length > 32 || /[\x00-\x1F\x7F-\x9F]/.test(value) || chars.some(ch =>
+            return chars.length > 48 || /[\x00-\x1F\x7F-\x9F]/.test(value) || chars.some(ch =>
             {
                 const code = ch.codePointAt(0);
                 return code >= 0xD800 && code <= 0xDFFF;
-            }) ? 'Имя команды: до 32 символов, без управляющих символов.' : '';
+            }) ? 'Имя команды: до 48 символов, без управляющих символов.' : '';
         }
         function queueSave(asNew = false)
         {
@@ -1417,6 +1571,7 @@
                 markDirty();
                 draftDirty = false;
                 i2cMode();
+            updateCommandCounts();
                 queueSpiConfig();
             }
             const completed = saveBusy && !data.busy && !data.scanning;
@@ -1598,7 +1753,8 @@
             get('spi-name-' + i).addEventListener('input', () =>
             {
                 const field = get('spi-name-' + i);
-                field.value = Array.from(field.value).slice(0, 32).join('');
+                field.value = Array.from(field.value).slice(0, 48).join('');
+                updateCommandCounts();
                 const error = commandNameError(field.value);
                 spiMessage(i, error, !!error);
                 markDirty();
@@ -1640,7 +1796,11 @@
                     spiMessage(i, 'Максимум 256 байт. Вставка отклонена целиком.', true);
                 }
             });
-            field.addEventListener('input', (event) => commandInput(i, event));
+            field.addEventListener('input', (event) =>
+            {
+                commandInput(i, event);
+                updateCommandCounts();
+            });
             get('spi-mode-' + i).addEventListener('change', () =>
             {
                 markDirty();
@@ -2121,6 +2281,280 @@
             // Russian is the default when browser storage is unavailable.
         }
         applyLanguage(savedLanguage);
+        let systemData = null;
+        let systemWriting = false;
+        function systemMessage(id, text, error = false)
+        {
+            get(id).className = 'system-message' + (error ? ' input-error' : '');
+            setText(get(id), text);
+        }
+        function systemButtons()
+        {
+            for (const id of ['network-save', 'calibration-save', 'calibration-reset'])
+            {
+                get(id).disabled = systemWriting || !systemData;
+            }
+            get('calibration-calculate').disabled = systemWriting || !systemData;
+            for (const id of ['network-ip', 'network-mask', 'network-gateway', 'network-port', 'calibration-ppm'])
+            {
+                get(id).disabled = systemWriting;
+            }
+        }
+        async function systemFetch(method = 'GET', body = null, apply = false)
+        {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 4000);
+            try
+            {
+                const options = {method, cache: 'no-store', signal: controller.signal};
+                if (body !== null)
+                {
+                    options.headers = {'X-Device-Control': '1', 'Content-Type': 'text/plain'};
+                    options.body = body;
+                }
+                const reply = await fetch(apply ? '/api/settings/apply' : '/api/settings', options);
+                const data = await reply.json();
+                if (!reply.ok)
+                {
+                    const failure = new Error(data.error === 12 ? 'Настройки изменены другим клиентом. Открой окно заново.' :
+                        (data.error === 5 ? 'Проверь IP, маску, шлюз и порт.' : libraryErrors[data.error]) || 'Не удалось изменить настройки.');
+                    failure.rejected = true;
+                    throw failure;
+                }
+                return data;
+            }
+            catch (error)
+            {
+                if (error.rejected)
+                {
+                    throw error;
+                }
+                throw new Error('Нет подтверждения операции. Проверь состояние перед повтором.');
+            }
+            finally
+            {
+                clearTimeout(timer);
+            }
+        }
+        function calibrationPpm(steps)
+        {
+            return steps * 1000000 / (1048576 - steps);
+        }
+        function calibrationSteps(ppm)
+        {
+            if (!Number.isFinite(ppm) || ppm <= -1000000)
+            {
+                throw new Error('Некорректная поправка.');
+            }
+            const steps = Math.round(ppm * 1048576 / (1000000 + ppm));
+            if (steps < -511 || steps > 512)
+            {
+                throw new Error('Поправка вне диапазона RTC: −487,1…+488,5 ppm.');
+            }
+            return steps;
+        }
+        function settingsBody(data)
+        {
+            return 'ip=' + data.ip + '\nmask=' + data.mask + '\ngateway=' + data.gateway + '\nport=' + data.port +
+                '\ncal=' + data.calibration + '\nseq=' + data.sequence + '\n';
+        }
+        function showCalibration(data)
+        {
+            const actual = calibrationPpm(data.cal_applied || 0).toFixed(3);
+            if (data.cal_error)
+            {
+                systemMessage('calibration-message', 'Поправка сохранена, но RTC не применил её. Проверь LSE или повтори применение.', true);
+            }
+            else
+            {
+                systemMessage('calibration-message', (data.cal_pending ? 'Ожидание готовности RTC… ' : 'Применённая поправка: ') + actual + ' ppm · шаг ≈ 0,954 ppm · окно 32 с');
+            }
+        }
+        async function openSystem(kind)
+        {
+            if (systemWriting)
+            {
+                return;
+            }
+            const network = kind === 'network';
+            const message = network ? 'network-message' : 'calibration-message';
+            systemData = null;
+            systemButtons();
+            get(network ? 'network-settings' : 'calibration-dialog').showModal();
+            systemMessage(message, 'Чтение настроек…');
+            if (network)
+            {
+                get('network-reconnect').hidden = true;
+            }
+            try
+            {
+                systemData = await systemFetch();
+                if (network)
+                {
+                    for (const key of ['ip', 'mask', 'gateway', 'port'])
+                    {
+                        get('network-' + key).value = String(systemData[key]);
+                    }
+                    systemMessage(message, systemData.error ? libraryErrors[systemData.error] || 'Ошибка Flash' : 'Параметры прочитаны. DHCP отключён.', !!systemData.error);
+                }
+                else
+                {
+                    get('calibration-ppm').value = calibrationPpm(systemData.calibration).toFixed(3);
+                    showCalibration(systemData);
+                }
+            }
+            catch (error)
+            {
+                systemMessage(message, 'Нет подтверждения операции. Проверь связь и открой окно заново.', true);
+            }
+            systemButtons();
+        }
+        function ipv4(text)
+        {
+            return /^\d{1,3}(\.\d{1,3}){3}$/.test(text) && text.split('.').every(part => Number(part) <= 255);
+        }
+        async function saveSystem(network, reset = false)
+        {
+            if (systemWriting || !systemData)
+            {
+                return;
+            }
+            const message = network ? 'network-message' : 'calibration-message';
+            const next = {...systemData};
+            try
+            {
+                if (network)
+                {
+                    for (const key of ['ip', 'mask', 'gateway'])
+                    {
+                        next[key] = get('network-' + key).value.trim();
+                        if (!ipv4(next[key]))
+                        {
+                            throw new Error('Укажи IPv4 в формате 172.16.236.220.');
+                        }
+                    }
+                    next.port = Number(get('network-port').value);
+                    if (!Number.isInteger(next.port) || next.port < 1 || next.port > 65535)
+                    {
+                        throw new Error('Порт: целое число от 1 до 65535.');
+                    }
+                }
+                else
+                {
+                    const value = get('calibration-ppm').value.trim();
+                    if (!reset && !value)
+                    {
+                        throw new Error('Укажи поправку в ppm.');
+                    }
+                    next.calibration = reset ? 0 : calibrationSteps(Number(value));
+                }
+                systemWriting = true;
+                systemButtons();
+                systemMessage(message, 'Сохранение во внешнюю Flash…');
+                const expected = next.sequence + 1;
+                await systemFetch('POST', settingsBody(next));
+                let confirmed = false;
+                for (let attempt = 0; attempt < 80; ++attempt)
+                {
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                    const data = await systemFetch();
+                    if (data.busy)
+                    {
+                        continue;
+                    }
+                    if (data.error)
+                    {
+                        throw new Error(libraryErrors[data.error] || 'Ошибка Flash');
+                    }
+                    if (data.sequence !== expected)
+                    {
+                        throw new Error('Настройки изменены другим клиентом. Открой окно заново.');
+                    }
+                    systemData = data;
+                    confirmed = true;
+                    break;
+                }
+                if (!confirmed)
+                {
+                    throw new Error('Нет подтверждения сохранения. Открой окно заново.');
+                }
+                if (network)
+                {
+                    const url = 'http://' + systemData.ip + ':' + systemData.port + '/';
+                    get('network-reconnect').href = url;
+                    get('network-reconnect').textContent = url;
+                    get('network-reconnect').hidden = false;
+                    await systemFetch('POST', settingsBody(systemData), true);
+                    systemMessage(message, 'Сохранено. Адрес изменится через 2 секунды. Открой ссылку ниже; ПК должен быть в доступной подсети.');
+                }
+                else
+                {
+                    get('calibration-ppm').value = calibrationPpm(next.calibration).toFixed(3);
+                    let applied = false;
+                    for (let attempt = 0; attempt < 80; ++attempt)
+                    {
+                        const data = await systemFetch();
+                        showCalibration(data);
+                        if (data.cal_error)
+                        {
+                            throw new Error('Поправка сохранена, но RTC не применил её. Проверь LSE или повтори применение.');
+                        }
+                        if (!data.cal_pending && data.cal_applied === next.calibration)
+                        {
+                            applied = true;
+                            break;
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                    if (!applied)
+                    {
+                        throw new Error('Поправка сохранена. Нет подтверждения применения RTC; проверь состояние позже.');
+                    }
+                }
+            }
+            catch (error)
+            {
+                systemMessage(message, error.message || 'Нет подтверждения операции. Проверь состояние перед повтором.', true);
+            }
+            finally
+            {
+                systemWriting = false;
+                systemButtons();
+            }
+        }
+        get('network-open').addEventListener('click', () => openSystem('network'));
+        get('calibration-open').addEventListener('click', () => openSystem('calibration'));
+        get('network-close').addEventListener('click', () => get('network-settings').close());
+        get('calibration-close').addEventListener('click', () => get('calibration-dialog').close());
+        get('network-save').addEventListener('click', () => saveSystem(true));
+        get('calibration-save').addEventListener('click', () => saveSystem(false));
+        get('calibration-reset').addEventListener('click', () => saveSystem(false, true));
+        get('calibration-calculate').addEventListener('click', () =>
+        {
+            try
+            {
+                if (!systemData)
+                {
+                    return;
+                }
+                const hours = Number(get('calibration-hours').value);
+                const drift = Number(get('calibration-end').value) - Number(get('calibration-start').value);
+                if (!Number.isFinite(hours) || hours < 1 || !Number.isFinite(drift) || 1 + drift / (hours * 3600) <= 0)
+                {
+                    throw new Error('Проверь расхождение и интервал измерения.');
+                }
+                const oldFactor = 1048576 / (1048576 - systemData.calibration);
+                const targetFactor = oldFactor / (1 + drift / (hours * 3600));
+                const steps = calibrationSteps((targetFactor - 1) * 1000000);
+                get('calibration-ppm').value = calibrationPpm(steps).toFixed(3);
+                systemMessage('calibration-message', 'Расчёт готов. Для записи нажми «Сохранить и применить».');
+            }
+            catch (error)
+            {
+                systemMessage('calibration-message', error.message, true);
+            }
+        });
+
         update();
     </script>
 </body>

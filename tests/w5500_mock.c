@@ -1,5 +1,6 @@
 #include "board.h"
 #include "config.h"
+#include "settings.h"
 #include "w5500.h"
 #include <string.h>
 
@@ -240,5 +241,22 @@ int test_entry(void)
     CHECK(w5500_state(0U) == 0x18U);
     w5500_close(0U);
     CHECK(w5500_state(0U) == W5500_CLOSED);
+    {
+        bench_settings_t settings;
+        bench_settings_defaults(&settings);
+        settings.ip[3] = 221U;
+        settings.port = 5026U;
+        now = 100U;
+        bench_network_schedule(&settings);
+        now = 2099U;
+        CHECK(!bench_network_poll());
+        CHECK(bench_settings_active()->port == APP_HTTP_PORT);
+        now = 2100U;
+        CHECK(bench_network_poll());
+        CHECK(w5500_init());
+        CHECK(common[18] == 221U);
+        CHECK(w5500_listen(0U));
+        CHECK(((uint32_t)socket_regs[0][4] << 8U | socket_regs[0][5]) == 5026U);
+    }
     return 0;
 }

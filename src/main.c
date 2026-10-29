@@ -11,16 +11,40 @@ int main(void)
     uint32_t last_sample;
     uint32_t last_retry;
     bool network_ready;
+    uint32_t last_settings_sequence = UINT32_MAX;
+    bench_settings_t settings;
+    uint32_t settings_sequence;
+    bool settings_busy;
+    store_error_t settings_error;
     board_init();
+    command_store_init();
+    command_system_get(&settings, &settings_sequence, &settings_busy, &settings_error);
+    bench_settings_activate(&settings);
     rtc_init();
     network_ready = w5500_init();
-    command_store_init();
     last_retry = board_millis();
     last_sample = board_millis() - APP_SAMPLE_PERIOD_MS;
     for (;;)
     {
         const uint32_t now = board_millis();
+        command_system_get(&settings, &settings_sequence, &settings_busy, &settings_error);
+        if (settings_error == STORE_OK && settings_sequence != last_settings_sequence)
+        {
+            const bool first = last_settings_sequence == UINT32_MAX;
+            last_settings_sequence = settings_sequence;
+            if (first || rtc_calibration_pending() || rtc_calibration_error() != 0U ||
+                rtc_calibration_applied() != settings.calibration)
+            {
+                rtc_calibration_request(settings.calibration);
+            }
+        }
         rtc_poll();
+        if (bench_network_poll())
+        {
+            http_reset();
+            network_ready = w5500_init();
+            last_retry = board_millis();
+        }
         if ((uint32_t)(now - last_sample) >= APP_SAMPLE_PERIOD_MS)
         {
             uint16_t values[2];
