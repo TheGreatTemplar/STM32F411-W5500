@@ -9,9 +9,10 @@
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
         .console-toolbar { display: flex; justify-content: space-between; align-items: start; gap: 16px; height: 64px; margin-bottom: 8px; overflow-x: auto; overflow-y: hidden; }
-        .bus-panel { flex: 1; min-width: 196px; display: grid; gap: 6px; }
+        .bus-panel { flex: 1; min-width: 298px; display: grid; gap: 6px; }
         .library-panel { width: 326px; flex: none; display: grid; gap: 6px; }
-        .bus-switch { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: 196px; flex: none; height: 36px; gap: 8px; }
+        .bus-switch { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); width: 298px; flex: none; height: 36px; gap: 8px; }
+        #bus-usart { cursor: not-allowed; }
         .bus-switch button { height: 36px; padding: 5px 8px; font-size: 14px; }
         .bus-switch button[aria-pressed="true"] { color: #101923; background: #6ed8c4; border-color: #6ed8c4; }
         .i2c-options input, .i2c-options select { height: 30px; min-width: 0; padding: 3px 7px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 6px; font: inherit; }
@@ -149,14 +150,15 @@
         footer { margin-top: 24px; font-size: 13px; }
         .name-remaining { font-size: 13px; color: #a6b7c7; font-variant-numeric: tabular-nums; text-align: right; }
         .command-editor button { height: 36px; white-space: nowrap; display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 14px; }
+        .command-editor textarea { min-height: 36px; height: 36px; padding-top: 5px; padding-bottom: 5px; }
         .command-editor button > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         .send-count { font-size: 12px; font-weight: 400; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .command-card .spi-output { min-height: calc(1.275em + 16.15px); height: calc(1.275em + 16.15px); padding: 5.6px 8.5px; }
         .details { padding-top: 16.1px; padding-bottom: 16.1px; align-items: center; }
         .details strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         #network-open { width: 150px; flex: none; margin-left: auto; padding: 7px 12px; font-size: 14px; white-space: nowrap; }
-        @media (min-width: 901px) { .details { display: grid; grid-template-columns: minmax(220px,1.6fr) repeat(3,minmax(0,1fr)) 150px; gap: 18px; } }
-        .rtc-control { display: grid; grid-template-columns: minmax(0,1fr) 140px; grid-template-rows: 24px 1fr; gap: 4px 16px; height: 116px; padding: 6px 20.4px; }
+        @media (min-width: 901px) { .details { display: grid; grid-template-columns: minmax(220px,1.6fr) minmax(0,1fr) 150px; gap: 18px; } }
+        .rtc-control { display: grid; grid-template-columns: minmax(0,1fr) 140px; grid-template-rows: 24px 1fr; gap: 4px 16px; height: 122px; padding: 6px 20.4px 12px; }
         .rtc-header { display: contents; }
         .rtc-title { grid-column: 1; grid-row: 1; gap: 10px; flex-wrap: nowrap; }
         .rtc-title h2 { white-space: nowrap; }
@@ -192,8 +194,7 @@
         <section class="details">
             <div>Адрес<strong id="address">172.16.236.220:5025 · —</strong></div>
             <div>Время работы<strong id="uptime">—</strong></div>
-            <div>Измерений<strong id="samples">—</strong></div>
-            <div>Опорное напряжение<strong id="vref">—</strong></div><button type="button" id="network-open">Сменить адрес</button>
+            <button type="button" id="network-open">Сменить адрес</button>
         </section>
         <section class="rtc-control" aria-label="Часы микроконтроллера">
             <div class="rtc-header"><div class="rtc-title"><h2>Часы стенда · RTC / LSE</h2><span id="rtc-message" role="status">Запуск LSE…</span></div><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
@@ -206,7 +207,7 @@
         </section>
         <section class="spi-control" aria-label="Консоль шин">
             <div class="console-toolbar">
-                <div class="bus-panel"><div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button></div>
+                <div class="bus-panel"><div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button><button type="button" id="bus-usart" aria-pressed="false" disabled title="Будет добавлено позже">USART</button></div>
                 <div class="console-state"><p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p><span class="hint spi-only" id="spi-config-status" role="status"></span></div></div>
                 <div class="library-panel"><div class="library-controls">
                     <button type="button" id="library-open-load">Загрузить</button>
@@ -328,6 +329,10 @@
                 <div class="raw">Код АЦП: <span id="r1">—</span> / 4095</div>
             </article>
         </section>
+        <div class="diag-grid">
+            <div>Измерений<strong id="samples">—</strong></div>
+            <div>Опорное напряжение<strong id="vref">—</strong></div>
+        </div>
         <div class="adc-notes">
             <p>Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.</p>
             <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
