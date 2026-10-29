@@ -58,6 +58,11 @@ try
     {
         throw 'ARM tests failed'
     }
+    & $Python tests/build_info.py
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'Build identity verification failed'
+    }
 }
 finally
 {

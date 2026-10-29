@@ -28,7 +28,8 @@ typedef enum
     HTTP_SPI_CONFIG,
     HTTP_SETTINGS,
     HTTP_SAVE_SETTINGS,
-    HTTP_APPLY_SETTINGS
+    HTTP_APPLY_SETTINGS,
+    HTTP_MCU
 } http_route_t;
 
 typedef struct

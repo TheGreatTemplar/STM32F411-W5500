@@ -1,5 +1,6 @@
 #include "http.h"
 #include "board.h"
+#include "build_info.h"
 #include "command_store.h"
 #include "config.h"
 #include "i2c_console.h"
@@ -130,6 +131,25 @@ static void format_ip(char text[16], const uint8_t ip[4])
 {
     (void)snprintf(text, 16U, "%u.%u.%u.%u", (unsigned int)ip[0], (unsigned int)ip[1],
                    (unsigned int)ip[2], (unsigned int)ip[3]);
+}
+
+static bool mcu_response(http_client_t *client)
+{
+    char storage[768];
+    int count;
+    if (command_storage_json(storage, sizeof(storage)) == 0U)
+    {
+        return false;
+    }
+    count = snprintf(client->body, sizeof(client->body),
+                     "{\"firmware\":{\"version\":\"%s\",\"build_utc\":\"%s\","
+                     "\"base_commit\":\"%s\",\"source_sha256\":\"%s\","
+                     "\"web_crc32\":\"%s\",\"compiler\":\"ArmClang %lu\","
+                     "\"c_standard\":\"C99 / CMSIS\"},\"storage\":%s}",
+                     FW_VERSION, FW_BUILD_UTC, FW_BASE_COMMIT, FW_SOURCE_SHA256, FW_WEB_CRC32,
+                     (unsigned long)__ARMCC_VERSION, storage);
+    return count > 0 && (size_t)count < sizeof(client->body) &&
+           response(client, 200U, "OK", "application/json", client->body, (size_t)count, "");
 }
 
 static bool diagnostics_response(http_client_t *client)
@@ -608,6 +628,8 @@ static bool dispatch(http_client_t *client, http_route_t route, const adc_snapsh
         return adc_response(client, adc);
     case HTTP_DIAGNOSTICS:
         return diagnostics_response(client);
+    case HTTP_MCU:
+        return mcu_response(client);
     case HTTP_SPI:
         return spi_response(client, false);
     case HTTP_SPI_CONFIG:

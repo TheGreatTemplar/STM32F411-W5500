@@ -41,6 +41,7 @@ store_error_t command_library_save(uint32_t id, const char *name, size_t name_si
                                    const char *body, size_t size);
 store_error_t command_library_delete(uint32_t id);
 size_t command_library_json(char *json, size_t capacity, uint32_t offset);
+size_t command_storage_json(char *json, size_t capacity);
 
 void command_system_get(bench_settings_t *settings, uint32_t *sequence, bool *busy,
                         store_error_t *error);

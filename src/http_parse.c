@@ -239,6 +239,10 @@ http_route_t http_parse(const char *request, size_t size)
     {
         return HTTP_ADC;
     }
+    if ((path_size == 8U) && (memcmp(path, "/api/mcu", 8U) == 0))
+    {
+        return HTTP_MCU;
+    }
     if ((path_size == 16U) && (memcmp(path, "/api/diagnostics", 16U) == 0))
     {
         return HTTP_DIAGNOSTICS;

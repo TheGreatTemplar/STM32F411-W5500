@@ -219,11 +219,21 @@ int test_entry(void)
     CHECK(strstr(json, "\"ready\":true") != NULL);
     CHECK(strstr(json, "\"has_saved\":false") != NULL);
     CHECK(writes == 0U);
+    CHECK(command_storage_json(json, sizeof(json)) != 0U);
+    CHECK(strstr(json, "\"complete\":true") != NULL);
+    CHECK(strstr(json, "\"capacity\":8388608") != NULL);
+    CHECK(strstr(json, "\"unallocated_bytes\":7331840") != NULL);
+    CHECK(strstr(json, "\"spi\":{\"used\":0,\"blocked\":0,\"free\":64}") != NULL);
+    CHECK(strstr(json, "\"i2c\":{\"used\":0,\"blocked\":0,\"free\":64}") != NULL);
+    CHECK(command_storage_json(json, 8U) == 0U);
     CHECK(command_store_save(invalid, sizeof(invalid) - 1U) == STORE_INVALID);
     CHECK(writes == 0U);
     CHECK(command_store_save(a, sizeof(a) - 1U) == STORE_OK);
     CHECK(command_store_save(b, sizeof(b) - 1U) == STORE_BUSY);
     CHECK(finish_save());
+    CHECK(command_storage_json(json, sizeof(json)) != 0U);
+    CHECK(strstr(json, "\"spi\":{\"used\":1,\"blocked\":0,\"free\":63}") != NULL);
+    CHECK(command_store_json(json, sizeof(json)) != 0U);
     CHECK(strstr(json, "\"sequence\":1") != NULL);
     CHECK(strstr(json, "\"commands\":[\"9F 00\",\"AA\",\"\",\"01 02\"]") != NULL);
     init_store();
@@ -381,6 +391,8 @@ int test_entry(void)
         0x5AU; /* Foreign bytes outside the used record length must also be protected. */
     init_store();
     CHECK(command_library_save(0U, "Foreign", 7U, a, sizeof(a) - 1U) == STORE_FOREIGN_DATA);
+    CHECK(command_storage_json(json, sizeof(json)) != 0U);
+    CHECK(strstr(json, "\"spi\":{\"used\":0,\"blocked\":1,\"free\":63}") != NULL);
     CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Safe", 4U, a, sizeof(a) - 1U) == STORE_OK);
     CHECK(finish_save());
     CHECK(media[OLD_BASE + 4000U] == 0x5AU);
@@ -402,6 +414,8 @@ int test_entry(void)
     CHECK(command_library_load(17U) == STORE_OK);
     CHECK(command_library_delete(17U) == STORE_OK);
     CHECK(finish_save());
+    CHECK(command_storage_json(json, sizeof(json)) != 0U);
+    CHECK(strstr(json, "\"spi\":{\"used\":63,\"blocked\":0,\"free\":1}") != NULL);
     CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Reuse", 5U, b, sizeof(b) - 1U) == STORE_OK);
     CHECK(finish_save());
     CHECK(command_library_load(17U) == STORE_OK);

@@ -2,6 +2,7 @@
 #include "board.h"
 #include "i2c_console.h"
 #include "spi_console.h"
+#include <stdio.h>
 #include <string.h>
 
 #define FLASH_BYTES 8388608UL
@@ -1223,6 +1224,42 @@ static void put_string(json_writer_t *writer, const char *text, size_t size)
         }
     }
     put_char(writer, '"');
+}
+
+size_t command_storage_json(char *json, size_t capacity)
+{
+    uint32_t used[2] = {0U, 0U};
+    uint32_t blocked[2] = {0U, 0U};
+    uint32_t i;
+    int count;
+    for (i = 0U; i < COMMAND_LIBRARY_TOTAL; ++i)
+    {
+        const uint32_t bank = i / COMMAND_LIBRARY_SLOTS;
+        used[bank] += catalog[i].kind == 1U ? 1U : 0U;
+        blocked[bank] += catalog[i].kind == 3U ? 1U : 0U;
+    }
+    count = snprintf(
+        json, capacity,
+        "{\"present\":%s,\"supported\":%s,\"complete\":%s,\"busy\":%s,"
+        "\"capacity\":%lu,\"sector_bytes\":%lu,\"slot_bytes\":%lu,"
+        "\"bank_bytes\":%lu,\"slots\":%u,\"system_bytes\":%lu,"
+        "\"unallocated_bytes\":%lu,\"system_sequence\":%lu,"
+        "\"record_version\":5,\"record_bytes\":%lu,"
+        "\"jedec\":\"%02X%02X%02X\","
+        "\"spi\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu},"
+        "\"i2c\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu}}",
+        present ? "true" : "false", supported_flash() ? "true" : "false",
+        ready && !scanning && !migrating ? "true" : "false", job != JOB_IDLE ? "true" : "false",
+        (unsigned long)(supported_flash() ? FLASH_BYTES : 0U), (unsigned long)SECTOR_BYTES,
+        (unsigned long)(2U * SECTOR_BYTES),
+        (unsigned long)(COMMAND_LIBRARY_SLOTS * 2U * SECTOR_BYTES), COMMAND_LIBRARY_SLOTS,
+        (unsigned long)(2U * SECTOR_BYTES), (unsigned long)SYSTEM_BASE,
+        (unsigned long)system_current.sequence, (unsigned long)sizeof(store_record_t),
+        (unsigned int)jedec[0], (unsigned int)jedec[1], (unsigned int)jedec[2],
+        (unsigned long)used[0], (unsigned long)blocked[0],
+        (unsigned long)(COMMAND_LIBRARY_SLOTS - used[0] - blocked[0]), (unsigned long)used[1],
+        (unsigned long)blocked[1], (unsigned long)(COMMAND_LIBRARY_SLOTS - used[1] - blocked[1]));
+    return count > 0 && (size_t)count < capacity ? (size_t)count : 0U;
 }
 
 size_t command_store_json(char *json, size_t capacity)

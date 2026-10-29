@@ -8,6 +8,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $projectRoot
 try
 {
+    & "$PSScriptRoot/build_info.ps1"
     New-Item -ItemType Directory -Force -Path build | Out-Null
     $compiler = Join-Path $Toolchain 'armclang.exe'
     $assembler = Join-Path $Toolchain 'armasm.exe'

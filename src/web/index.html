@@ -229,6 +229,14 @@
         .diag-grid { margin: var(--panel-padding) 0; }
         .diag-grid div, fieldset, .spi-settings fieldset { padding: var(--panel-padding); }
         @media (max-width: 620px) { .console-toolbar { height: 74px; } }
+        .storage-table { white-space: normal; }
+        .storage-table th, .storage-table td { padding: 8px; }
+        .storage-table td { font-variant-numeric: tabular-nums; }
+        .mcu-section { margin-top: var(--panel-padding); }
+        #mcu-message { min-height: 22px; margin: 8px 0; font-size: 13px; }
+        #about-dialog { width: min(760px,calc(100% - 24px)); }
+        #about-info { grid-template-columns: 1fr; }
+        #about-info strong { font-family: ui-monospace,monospace; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -384,6 +392,19 @@
             <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
         </div>
         <div class="flash-status"><span id="store-status" role="status">Проверка W25Q64JV…</span></div>
+        <section class="mcu-section" aria-label="Память стенда">
+            <div class="led-header"><h2>Внешняя Flash · W25Q64JV</h2><div class="buttons"><button type="button" id="about-open" disabled>О программе</button><button type="button" id="mcu-refresh">Обновить</button></div></div>
+            <p id="mcu-message" role="status">Ожидание данных…</p>
+            <div class="table-scroll"><table class="storage-table"><thead><tr><th>Шина</th><th>Занято наборов</th><th>Свободно наборов</th><th>Недоступно</th></tr></thead><tbody id="storage-banks"></tbody></table></div>
+            <div class="diag-grid" id="storage-summary"></div>
+            <p class="hint">Для каждого набора зарезервировано 8 КиБ: две копии по 4 КиБ для защиты от обрыва питания. Удалённые наборы можно использовать повторно.</p>
+            <p class="hint">Неразмеченная область доступна для будущих функций. Проверка её содержимого не выполняется; это не счётчик стёртых байтов.</p>
+        </section>
+    </dialog>
+    <dialog id="about-dialog" aria-labelledby="about-title">
+        <div class="library-header"><h2 id="about-title">О программе</h2><button type="button" id="about-close">Закрыть</button></div>
+        <div class="diag-grid" id="about-info"></div>
+        <p class="hint">SHA-256 определяет исходники сборки. Базовый коммит — отправная точка изменений; он не выдаётся за коммит готовой прошивки. CRC32 относится к веб-странице, а не ко всему HEX.</p>
     </dialog>
     <dialog id="diagnostics" aria-labelledby="diag-title">
         <div class="led-header"><h2 id="diag-title">Диагностика W5500</h2><button type="button" id="diag-close">Закрыть</button></div>
@@ -406,6 +427,34 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Память стенда": "Bench storage",
+            "О программе": "About",
+            "Внешняя Flash · W25Q64JV": "External Flash · W25Q64JV",
+            "Шина": "Bus",
+            "Занято наборов": "Used presets",
+            "Свободно наборов": "Free presets",
+            "Недоступно": "Unavailable",
+            "Для каждого набора зарезервировано 8 КиБ: две копии по 4 КиБ для защиты от обрыва питания. Удалённые наборы можно использовать повторно.": "Each preset reserves 8 KiB: two 4 KiB copies for power-loss protection. Deleted presets can be reused.",
+            "Неразмеченная область доступна для будущих функций. Проверка её содержимого не выполняется; это не счётчик стёртых байтов.": "Unallocated space is available for future features. Its contents are not scanned; this is not an erased-byte count.",
+            "SHA-256 определяет исходники сборки. Базовый коммит — отправная точка изменений; он не выдаётся за коммит готовой прошивки. CRC32 относится к веб-странице, а не ко всему HEX.": "SHA-256 identifies build sources. The base commit is the starting revision, not the final firmware commit. CRC32 covers the web page, not the entire HEX.",
+            "Ёмкость Flash": "Flash capacity",
+            "Резерв каждой шины": "Reserved per bus",
+            "IP и калибровка · две копии": "IP and calibration · two copies",
+            "Не размечено · будущие функции": "Unallocated · future features",
+            "USART / I2S": "USART / I2S",
+            "Область пока не выделена": "No region allocated yet",
+            "Версия записи / размер": "Record version / size",
+            "Версия ПО": "Firmware version",
+            "Сборка UTC": "Build UTC",
+            "Базовый коммит": "Base commit",
+            "Исходники · SHA-256": "Sources · SHA-256",
+            "Веб-страница · CRC32": "Web page · CRC32",
+            "Компилятор": "Compiler",
+            "Среда": "Environment",
+            "Каталог ещё сканируется. Обнови снимок после завершения.": "Catalog scan is in progress. Refresh when it finishes.",
+            "Снимок памяти обновлён.": "Storage snapshot updated.",
+            "Идёт запись. Показан последний подтверждённый каталог.": "Write in progress. Showing the last committed catalog.",
+            "Не удалось получить диагностику STM32.": "Could not read STM32 diagnostics.",
             "Сменить адрес": "Change address",
             "Калибровка": "Calibration",
             "Синхронизировать по сети": "Synchronize over network",
@@ -696,6 +745,34 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Память стенда": "装置のストレージ",
+            "О программе": "このソフトについて",
+            "Внешняя Flash · W25Q64JV": "外部Flash · W25Q64JV",
+            "Шина": "バス",
+            "Занято наборов": "使用中プリセット",
+            "Свободно наборов": "空きプリセット",
+            "Недоступно": "使用不可",
+            "Для каждого набора зарезервировано 8 КиБ: две копии по 4 КиБ для защиты от обрыва питания. Удалённые наборы можно использовать повторно.": "各プリセットに8 KiBを予約します。停電対策として4 KiBのコピーを2つ保存します。削除済み領域は再利用できます。",
+            "Неразмеченная область доступна для будущих функций. Проверка её содержимого не выполняется; это не счётчик стёртых байтов.": "未割当領域は将来の機能用です。内容は走査しません。消去済みバイト数ではありません。",
+            "SHA-256 определяет исходники сборки. Базовый коммит — отправная точка изменений; он не выдаётся за коммит готовой прошивки. CRC32 относится к веб-странице, а не ко всему HEX.": "SHA-256はビルド元の識別値です。基準コミットは変更の出発点です。CRC32の対象はWebページで、HEX全体ではありません。",
+            "Ёмкость Flash": "Flash容量",
+            "Резерв каждой шины": "各バスの予約容量",
+            "IP и калибровка · две копии": "IPと校正 · 2コピー",
+            "Не размечено · будущие функции": "未割当 · 将来の機能",
+            "USART / I2S": "USART / I2S",
+            "Область пока не выделена": "領域は未割当",
+            "Версия записи / размер": "記録形式 / サイズ",
+            "Версия ПО": "ファームウェア版",
+            "Сборка UTC": "ビルド日時 UTC",
+            "Базовый коммит": "基準コミット",
+            "Исходники · SHA-256": "ソース · SHA-256",
+            "Веб-страница · CRC32": "Webページ · CRC32",
+            "Компилятор": "コンパイラ",
+            "Среда": "開発環境",
+            "Каталог ещё сканируется. Обнови снимок после завершения.": "一覧を走査中です。完了後に更新してください。",
+            "Снимок памяти обновлён.": "メモリ情報を更新しました。",
+            "Идёт запись. Показан последний подтверждённый каталог.": "書込中です。確定済み一覧を表示しています。",
+            "Не удалось получить диагностику STM32.": "STM32診断を取得できませんでした。",
             "Сменить адрес": "アドレス変更",
             "Калибровка": "校正",
             "Синхронизировать по сети": "ネットワーク同期",
@@ -1944,7 +2021,90 @@
             get('diagnostics').showModal();
             queueDiagnostics();
         });
-        get('mcu-diag-open').addEventListener('click', () => get('mcu-diagnostics').showModal());
+        let mcuLoading = false;
+        function storageBytes(value)
+        {
+            return Number(value).toLocaleString(language === 'ru' ? 'ru-RU' : language === 'ja' ? 'ja-JP' : 'en-US') + ' B · ' + (value / 1048576).toFixed(3) + ' MiB';
+        }
+        function showMcu(data)
+        {
+            const flash = data.storage;
+            const valid = flash.present && flash.supported;
+            const complete = valid && flash.complete;
+            get('storage-banks').replaceChildren();
+            for (const bus of ['spi', 'i2c'])
+            {
+                const row = document.createElement('tr');
+                const bank = flash[bus];
+                for (const value of [bus.toUpperCase(),
+                    complete ? bank.used + ' / ' + flash.slots + ' · ' + storageBytes(bank.used * flash.slot_bytes) : '—',
+                    complete ? bank.free + ' · ' + storageBytes(bank.free * flash.slot_bytes) : '—',
+                    complete ? bank.blocked + ' · ' + storageBytes(bank.blocked * flash.slot_bytes) : '—'])
+                {
+                    const cell = document.createElement('td');
+                    setText(cell, value);
+                    row.append(cell);
+                }
+                get('storage-banks').append(row);
+            }
+            diagnosticCards('storage-summary', [
+                ['Ёмкость Flash', valid ? storageBytes(flash.capacity) : '—'],
+                ['Резерв каждой шины', valid ? storageBytes(flash.bank_bytes) : '—'],
+                ['IP и калибровка · две копии', valid ? storageBytes(flash.system_bytes) : '—'],
+                ['Не размечено · будущие функции', valid ? storageBytes(flash.unallocated_bytes) : '—'],
+                ['USART / I2S', 'Область пока не выделена'],
+                ['JEDEC ID', flash.jedec],
+                ['Версия записи / размер', flash.record_version + ' / ' + flash.record_bytes + ' B']
+            ]);
+            const fw = data.firmware;
+            diagnosticCards('about-info', [['Версия ПО', fw.version], ['Сборка UTC', fw.build_utc],
+                ['Базовый коммит', fw.base_commit], ['Исходники · SHA-256', fw.source_sha256],
+                ['Веб-страница · CRC32', fw.web_crc32], ['Компилятор', fw.compiler], ['Среда', fw.c_standard]]);
+            get('about-open').disabled = false;
+            get('mcu-message').className = valid ? '' : 'input-error';
+            setText(get('mcu-message'), !valid ? (flash.present ? 'Неожиданный JEDEC ID' : 'Flash не найдена') :
+                !complete ? 'Каталог ещё сканируется. Обнови снимок после завершения.' : flash.busy ?
+                'Идёт запись. Показан последний подтверждённый каталог.' : 'Снимок памяти обновлён.');
+        }
+        async function loadMcu()
+        {
+            if (mcuLoading)
+            {
+                return;
+            }
+            mcuLoading = true;
+            get('mcu-refresh').disabled = true;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 4000);
+            try
+            {
+                const reply = await fetch('/api/mcu', {cache: 'no-store', signal: controller.signal});
+                if (!reply.ok)
+                {
+                    throw new Error('HTTP');
+                }
+                showMcu(await reply.json());
+            }
+            catch (error)
+            {
+                get('mcu-message').className = 'input-error';
+                setText(get('mcu-message'), 'Не удалось получить диагностику STM32.');
+            }
+            finally
+            {
+                clearTimeout(timer);
+                get('mcu-refresh').disabled = false;
+                mcuLoading = false;
+            }
+        }
+        get('mcu-diag-open').addEventListener('click', () =>
+        {
+            get('mcu-diagnostics').showModal();
+            loadMcu();
+        });
+        get('mcu-refresh').addEventListener('click', loadMcu);
+        get('about-open').addEventListener('click', () => get('about-dialog').showModal());
+        get('about-close').addEventListener('click', () => get('about-dialog').close());
         get('mcu-diag-close').addEventListener('click', () => get('mcu-diagnostics').close());
         get('diag-close').addEventListener('click', () => get('diagnostics').close());
         get('diag-refresh').addEventListener('click', queueDiagnostics);

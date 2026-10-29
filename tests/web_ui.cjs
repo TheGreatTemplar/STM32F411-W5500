@@ -23,6 +23,14 @@ let ledOn = false;
 let failCommand = false;
 let adcOk = true;
 let failDiagnostics = false;
+let failMcu = false;
+const mcuData = {firmware: {version: '0.1.0', build_utc: '2026-10-29T12:00:00Z',
+    base_commit: '93dfd03301b8b5e29583e77c7495cc8bc5bafcf2', source_sha256: 'a'.repeat(64),
+    web_crc32: '12345678', compiler: 'ArmClang 6190000', c_standard: 'C99 / CMSIS'},
+    storage: {present: true, supported: true, complete: true, busy: false, capacity: 8388608,
+        slot_bytes: 8192, bank_bytes: 524288, slots: 64, system_bytes: 8192,
+        unallocated_bytes: 7331840, jedec: 'EF4017', record_version: 5, record_bytes: 4068,
+        spi: {used: 2, free: 61, blocked: 1}, i2c: {used: 1, free: 63, blocked: 0}}};
 let failSpi = false;
 let failSpiTransport = false;
 let failI2c = false;
@@ -356,6 +364,10 @@ const context = vm.createContext({
                 json: async () => ({bus: 2, mode: 3, hz: 1000000, count: 4,
                     tx: '9F000000', rx: 'EF401500', transfer_us: 42})};
         }
+        if (url === '/api/mcu')
+        {
+            return {ok: !failMcu, json: async () => structuredClone(mcuData)};
+        }
         if (url === '/api/diagnostics')
         {
             return {ok: !failDiagnostics, status: failDiagnostics ? 503 : 200,
@@ -429,7 +441,26 @@ async function test()
     await vm.runInContext('update()', context);
     assert.equal(requests.filter(item => item.url === '/api/spi/config').length, configsAfterFailure);
     elements.get('mcu-diag-open').click();
+    await vm.runInContext('Promise.resolve()', context);
     assert.equal(elements.get('mcu-diagnostics').open, true);
+    await vm.runInContext('loadMcu()', context);
+    assert.equal(elements.get('storage-banks').children.length, 2);
+    assert.match(elements.get('storage-banks').children[0].children[1].textContent, /2 \/ 64/);
+    assert.match(elements.get('storage-banks').children[0].children[2].textContent, /^61/);
+    assert.match(elements.get('storage-banks').children[0].children[3].textContent, /^1/);
+    assert.equal(elements.get('about-info').children[0].children[0].textContent, '0.1.0');
+    elements.get('about-open').click();
+    assert.equal(elements.get('about-dialog').open, true);
+    elements.get('about-close').click();
+    assert.equal(elements.get('about-dialog').open, false);
+    mcuData.storage.complete = false;
+    await vm.runInContext('loadMcu()', context);
+    assert.equal(elements.get('storage-banks').children[0].children[1].textContent, '—');
+    mcuData.storage.complete = true;
+    failMcu = true;
+    await vm.runInContext('loadMcu()', context);
+    assert.equal(elements.get('mcu-message').className, 'input-error');
+    failMcu = false;
     elements.get('mcu-diag-close').click();
     assert.equal(elements.get('mcu-diagnostics').open, false);
     const beforeDialog = requests.length;
@@ -1000,7 +1031,7 @@ async function test()
     await vm.runInContext('saveSystem(true)', context);
     assert.equal(systemState.port, 5026);
     assert.match(elements.get('network-message').textContent, /65535/);
-    console.log('Web UI: SPI/I2C switch, isolated drafts, read/write/write-read, named library, NACK/no retry, RU/EN/JA, queue and RTC/ADC/LED passed');
+    console.log('Web UI: SPI/I2C, named library, queue, RTC/ADC/LED, Flash statistics and About passed');
 }
 
 test().catch((error) =>

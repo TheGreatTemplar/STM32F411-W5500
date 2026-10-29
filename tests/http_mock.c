@@ -99,6 +99,17 @@ store_error_t command_library_delete(uint32_t id)
     return id < COMMAND_LIBRARY_TOTAL ? STORE_OK : STORE_NOT_FOUND;
 }
 
+size_t command_storage_json(char *json, size_t capacity)
+{
+    const char *text = "{\"capacity\":8388608,\"unallocated_bytes\":7331840}";
+    if (capacity <= strlen(text))
+    {
+        return 0U;
+    }
+    strcpy(json, text);
+    return strlen(json);
+}
+
 size_t command_library_json(char *json, size_t capacity, uint32_t offset)
 {
     (void)offset;
@@ -513,6 +524,13 @@ int test_entry(void)
     CHECK(framing_ok());
     http_reset();
     CHECK(!led_on && led_writes == 2U);
+    prepare("GET /api/mcu HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "200 OK") != NULL);
+    CHECK(strstr(output, "\"source_sha256\":\"") != NULL);
+    CHECK(strstr(output, "\"web_crc32\":\"") != NULL);
+    CHECK(strstr(output, "\"unallocated_bytes\":7331840") != NULL);
+    CHECK(framing_ok());
     prepare("GET /api/diagnostics HTTP/1.1\r\n\r\n");
     pump(&adc);
     CHECK(strstr(output, "200 OK") != NULL);
