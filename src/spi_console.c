@@ -48,7 +48,8 @@ bool spi_clock_plan(uint32_t hz, spi_clock_plan_t *plan)
     uint32_t divider = 16000000U;
     uint32_t prescaler;
     if ((hz != 62500U) && (hz != 125000U) && (hz != 250000U) && (hz != 500000U) &&
-        (hz != 1000000U) && ((hz < 2000000U) || (hz > 20000000U) || (hz % 2000000U != 0U)))
+        (hz != 1000000U) && (hz != 25000000U) &&
+        ((hz < 2000000U) || (hz > 24000000U) || (hz % 2000000U != 0U)))
     {
         return false;
     }
@@ -91,6 +92,18 @@ bool spi_clock_plan(uint32_t hz, spi_clock_plan_t *plan)
         break;
     case 20000000U:
         plan->system_hz = 80000000U;
+        plan->prescaler = 0U;
+        break;
+    case 22000000U:
+        plan->system_hz = 88000000U;
+        plan->prescaler = 0U;
+        break;
+    case 24000000U:
+        plan->system_hz = 96000000U;
+        plan->prescaler = 0U;
+        break;
+    case 25000000U:
+        plan->system_hz = 100000000U;
         plan->prescaler = 0U;
         break;
     default:

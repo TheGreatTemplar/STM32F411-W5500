@@ -53,7 +53,7 @@ class TestDate extends Date
     }
 }
 const saved = {present: true, ready: true, busy: false, scanning: false, scan: 64, id: 63, name: 'Default', has_saved: true, save_ok: true,
-    error: 0, sequence: 7, settings: {mode: 3, hz: 20000000, lsb: 1, cs_high: 1, format: 'hex'},
+    error: 0, sequence: 7, settings: {mode: 3, hz: 25000000, lsb: 1, cs_high: 1, format: 'hex'},
     commands: ['9F 00 00 00', 'AA BB', '', '01 02']};
 const libraryRecords = new Map([[63, structuredClone(saved)]]);
 function createElement()
@@ -344,7 +344,7 @@ async function test()
     vm.runInContext(source, context);
     await vm.runInContext('update()', context);
     assert.equal(elements.get('spi-command-1').value, 'AA BB');
-    assert.equal(elements.get('spi-hz').value, '20000000');
+    assert.equal(elements.get('spi-hz').value, '25000000');
     assert.equal(elements.get('spi-mode-description').textContent, 'CPOL=1 · CPHA=1');
     assert.equal(elements.get('spi-lsb').checked, true);
     assert.equal(elements.get('spi-cs-high').checked, true);

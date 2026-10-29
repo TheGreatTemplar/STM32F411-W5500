@@ -136,7 +136,7 @@ def model_clock(machine, address, size, data):
 from spi_dma_tests import DmaModel
 spi_cases = 0
 for mode in range(4):
-    for hz in [62500, 125000, 250000, 500000, 1000000, *range(2000000, 20000001, 2000000)]:
+    for hz in [62500, 125000, 250000, 500000, 1000000, *range(2000000, 24000001, 2000000), 25000000]:
         body = f"bus=2 mode={mode} hz={hz} lsb=1 cs_high=0 format=hex\n9F 00 aA FF".encode()
         ok, command = parse_spi(body)
         assert ok and struct.unpack_from('<5I', command) == (hz, mode, 1, 0, 4)
@@ -180,6 +180,8 @@ for mode in range(4):
         assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
 
 base = b"bus=2 mode=0 hz=1000000 lsb=0 cs_high=0 format=hex\n"
+for invalid_hz in [0, 23000000, 25000001, 26000000, 50000000]:
+    assert parse_spi(base.replace(b'hz=1000000', f'hz={invalid_hz}'.encode()) + b'00')[0] == 0
 assert parse_spi(base + b'00 ' * 256)[0] == 1
 assert parse_spi(base + b'00 ' * 257)[0] == 0
 for bad in [b'', base, base + b'9', base + b'GG',
@@ -214,7 +216,7 @@ def advance_tick(machine, address, size, data):
 
 
 dma_model.close()
-print('SPI console: 60 mode/rate configurations, PLL switching/restoration, register loopback, limits and invalid input passed')
+print('SPI console: 72 mode/rate configurations through 25 MHz, PLL switching/restoration, register loopback, limits and invalid input passed')
 from i2c_register_tests import run as run_i2c_register_tests
 from spi_config_tests import run as run_spi_config_tests
 run_spi_config_tests(uc, symbols, call)

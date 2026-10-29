@@ -203,7 +203,7 @@
                 </fieldset>
                 <fieldset class="i2c-only i2c-options" hidden><legend>Адрес I2C · HEX</legend><label>0x<input id="i2c-address" value="50" maxlength="2" spellcheck="false" aria-label="7-битный адрес I2C"></label><span class="hint">7 бит · 08–77</span></fieldset>
                 <fieldset class="i2c-only i2c-options" hidden><legend>Операция I2C</legend><select id="i2c-operation" aria-label="Операция I2C"><option value="0">Запись</option><option value="1">Чтение</option><option value="2">Запись → чтение</option></select><label>RX · байт<input id="i2c-read" type="number" value="1" min="1" max="256" step="1" aria-label="Количество байт чтения"></label></fieldset>
-                <div class="spi-selects"><label class="i2c-only" hidden>Частота<select id="i2c-hz"><option value="100000">100 кГц</option><option value="400000">400 кГц</option></select></label><label class="spi-only">Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option></select></label>
+                <div class="spi-selects"><label class="i2c-only" hidden>Частота<select id="i2c-hz"><option value="100000">100 кГц</option><option value="400000">400 кГц</option></select></label><label class="spi-only">Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option><option value="22000000">22 МГц</option><option value="24000000">24 МГц</option><option value="25000000">25 МГц</option></select></label>
                 <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label></div>
             </div>
             <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
@@ -505,6 +505,9 @@
             "16 МГц": "16 MHz",
             "18 МГц": "18 MHz",
             "20 МГц": "20 MHz",
+            "22 МГц": "22 MHz",
+            "24 МГц": "24 MHz",
+            "25 МГц": "25 MHz",
             "62,5 кГц": "62.5 kHz",
             "125 кГц": "125 kHz",
             "250 кГц": "250 kHz",
@@ -750,6 +753,9 @@
             "16 МГц": "16 MHz",
             "18 МГц": "18 MHz",
             "20 МГц": "20 MHz",
+            "22 МГц": "22 MHz",
+            "24 МГц": "24 MHz",
+            "25 МГц": "25 MHz",
             "62,5 кГц": "62.5 kHz",
             "125 кГц": "125 kHz",
             "250 кГц": "250 kHz",

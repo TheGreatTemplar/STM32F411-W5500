@@ -117,7 +117,9 @@ class DmaModel:
 
 def run(uc, symbols, call):
     for length, hz, fault in [(1, 1000000, None), (11, 10000000, None),
-                              (11, 20000000, None), (256, 20000000, None),
+                              (11, 20000000, None), (11, 22000000, None),
+                              (11, 24000000, None), (11, 25000000, None),
+                              (256, 25000000, None),
                               (256, 62500, None)] + [(11, 10000000, f) for f in
                               ('stall', 'rx_stall', 'tx_stall', 'busy', 'rx_te', 'rx_dme', 'rx_fe',
                                'tx_te', 'tx_dme', 'tx_fe', 'ovr', 'modf', 'stop', 'prestop')]:

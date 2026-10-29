@@ -65,7 +65,7 @@ void board_init(void)
     output_mode(GPIOB, 12U);
     GPIOB->MODER = (GPIOB->MODER & ~0xFC000000UL) | 0xA8000000UL;
     GPIOB->AFR[1] = (GPIOB->AFR[1] & ~0xFFF00000UL) | 0x55500000UL;
-    GPIOB->OSPEEDR |= 0xFC000000UL; /* Very high speed for up to 20 MHz SPI2. */
+    GPIOB->OSPEEDR |= 0xFC000000UL; /* Very high speed for up to 25 MHz SPI2. */
     GPIOB->PUPDR &= ~0xFC000000UL;
     RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
     (void)RCC->APB1ENR;
@@ -284,7 +284,7 @@ static bool boost_clock(const spi_clock_plan_t *plan)
         return false;
     }
     PWR->CR |= PWR_CR_VOS;
-    n = plan->system_hz / 500000U; /* HSI / 16 * N / 2. VCO 112..192 MHz. */
+    n = plan->system_hz / 500000U; /* HSI / 16 * N / 2. VCO 112..200 MHz. */
     RCC->PLLCFGR = 16U | (n << 6U) | (4UL << 24U);
     RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2)) | RCC_CFGR_PPRE1_DIV2;
     RCC->CR |= RCC_CR_PLLON;

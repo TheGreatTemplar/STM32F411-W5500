@@ -8,7 +8,7 @@ def run(uc, symbols, call):
     hook = uc.hook_add(UC_HOOK_MEM_WRITE, lambda m, a, addr, size, value, data: writes.append(value),
                        begin=0x4000380C, end=0x4000380F)
     for mode in range(4):
-        text = f'bus=2 mode={mode} hz=20000000 lsb=1 cs_high=0 format=hex\n00'.encode()
+        text = f'bus=2 mode={mode} hz=25000000 lsb=1 cs_high=0 format=hex\n00'.encode()
         uc.mem_write(0x20010000, text)
         uc.reg_write(UC_ARM_REG_R0, 0x20010000)
         uc.reg_write(UC_ARM_REG_R1, len(text))
