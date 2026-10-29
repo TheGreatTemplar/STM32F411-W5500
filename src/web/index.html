@@ -188,9 +188,16 @@
         .diagnostic-buttons button, #network-open, .language-switch button
         {
             height: var(--control-height);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             padding-top: 3px;
             padding-bottom: 3px;
             line-height: 20px;
+        }
+        .command-editor button
+        {
+            justify-content: space-between;
         }
         input:not([type="radio"]):not([type="checkbox"]), select,
         .library-fields input, .library-fields select, .system-fields input,
@@ -245,6 +252,35 @@
         #uart-eol-label { width: 140px; }
         #uart-rx { height: 140px; min-height: 30px; font-size: 13px; padding: 5px 8px; }
         #uart-state { height: 44px; min-height: 44px; overflow: auto; font-size: 13px; margin: 8px 0; }
+        #calibration-reset-confirm
+        {
+            width: min(520px,calc(100% - 24px));
+            height: 208px;
+            background: #ffe082;
+            color: #332600;
+            border-color: #b78415;
+            color-scheme: light;
+        }
+        #calibration-reset-question
+        {
+            height: 64px;
+            margin: 16px 0;
+            color: inherit;
+            line-height: 22px;
+            overflow: auto;
+        }
+        #calibration-reset-confirm button
+        {
+            background: #fff2c6;
+            color: #332600;
+            border-color: #b78415;
+        }
+        #calibration-reset-confirm #calibration-reset-yes
+        {
+            background: #9c4b00;
+            color: #fff;
+            border-color: #9c4b00;
+        }
     </style>
 </head>
 <body>
@@ -372,6 +408,11 @@
         <div class="buttons"><button type="button" id="calibration-calculate">Рассчитать по уходу</button><button type="button" id="calibration-save" disabled>Сохранить и применить</button><button type="button" id="calibration-reset" disabled>Сбросить поправку</button></div>
         <p id="calibration-message" class="system-message" role="status"></p>
     </dialog>
+    <dialog id="calibration-reset-confirm" aria-labelledby="calibration-reset-title" aria-describedby="calibration-reset-question">
+        <h2 id="calibration-reset-title">Подтверждение сброса</h2>
+        <p id="calibration-reset-question">Сбросить поправку RTC до 0 ppm? Нулевая поправка будет сохранена во Flash и применена к часам.</p>
+        <div class="library-actions"><button type="button" id="calibration-reset-no" autofocus>Отмена</button><button type="button" id="calibration-reset-yes">Сбросить</button></div>
+    </dialog>
     <dialog id="command-library" aria-labelledby="library-title">
         <div class="library-header"><h2 id="library-title">Библиотека команд</h2><button type="button" id="library-close">Закрыть</button></div>
         <div class="library-fields">
@@ -457,6 +498,9 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Подтверждение сброса": "Confirm reset",
+            "Сбросить поправку RTC до 0 ppm? Нулевая поправка будет сохранена во Flash и применена к часам.": "Reset RTC correction to 0 ppm? The zero correction will be saved to Flash and applied to the clock.",
+            "Сбросить": "Reset",
             "Тест USART": "USART test",
             "USART1 · тест": "USART1 · test",
             "PA9 TX · PA10 RX · логика 3,3 В · общий GND": "PA9 TX · PA10 RX · 3.3 V logic · common GND",
@@ -808,6 +852,9 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Подтверждение сброса": "リセットの確認",
+            "Сбросить поправку RTC до 0 ppm? Нулевая поправка будет сохранена во Flash и применена к часам.": "RTC補正を0 ppmに戻しますか？補正値をFlashに保存し、時計に適用します。",
+            "Сбросить": "リセット",
             "Тест USART": "USARTテスト",
             "USART1 · тест": "USART1 · テスト",
             "PA9 TX · PA10 RX · логика 3,3 В · общий GND": "PA9 TX · PA10 RX · 3.3 Vロジック · 共通GND",
@@ -2837,7 +2884,19 @@
         get('calibration-close').addEventListener('click', () => get('calibration-dialog').close());
         get('network-save').addEventListener('click', () => saveSystem(true));
         get('calibration-save').addEventListener('click', () => saveSystem(false));
-        get('calibration-reset').addEventListener('click', () => saveSystem(false, true));
+        get('calibration-reset').addEventListener('click', () =>
+        {
+            if (!systemWriting && systemData)
+            {
+                get('calibration-reset-confirm').showModal();
+            }
+        });
+        get('calibration-reset-no').addEventListener('click', () => get('calibration-reset-confirm').close());
+        get('calibration-reset-yes').addEventListener('click', () =>
+        {
+            get('calibration-reset-confirm').close();
+            saveSystem(false, true);
+        });
         get('calibration-calculate').addEventListener('click', () =>
         {
             try
