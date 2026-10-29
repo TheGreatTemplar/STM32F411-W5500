@@ -8,8 +8,9 @@
         :root { color-scheme: dark; font-family: system-ui, sans-serif; line-height: 1.4; background: #101923; color: #e9eff5; }
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
-        .bus-switch { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: min(290px,100%); height: 40px; gap: 10px; margin-bottom: 16px; }
-        .bus-switch button { height: 40px; padding: 6px 8px; }
+        .console-toolbar { display: flex; justify-content: space-between; align-items: start; gap: 16px; height: 52px; margin-bottom: 8px; overflow-x: auto; }
+        .bus-switch { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: 196px; flex: none; height: 36px; gap: 8px; }
+        .bus-switch button { height: 36px; padding: 5px 8px; font-size: 14px; }
         .bus-switch button[aria-pressed="true"] { color: #101923; background: #6ed8c4; border-color: #6ed8c4; }
         .i2c-options input, .i2c-options select { height: 30px; min-width: 0; padding: 3px 7px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 6px; font: inherit; }
         #i2c-address { width: 70px; font-family: ui-monospace,monospace; }
@@ -72,18 +73,25 @@
         .command-heading { display: grid; grid-template-columns: minmax(0,42%) minmax(0,1fr); gap: 16px; align-items: center; height: 44px; }
         .command-heading label { font-size: 14px; line-height: 20px; }
         .command-message { height: 32px; min-height: 0; line-height: 20px; font-size: 13px; margin: 0; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .library-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; width: min(290px,100%); height: 40px; margin: 12px 0; }
-        .library-controls button { min-width: 0; height: 40px; padding: 6px 8px; white-space: nowrap; }
-        #command-library { width: min(680px,calc(100% - 24px)); height: 440px; overflow: auto; scrollbar-gutter: stable; }
+        .library-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; width: 326px; flex: none; height: 36px; }
+        .library-controls button { min-width: 0; height: 36px; padding: 5px 8px; font-size: 14px; white-space: nowrap; }
+        #command-library { width: min(680px,calc(100% - 24px)); height: 340px; overflow: auto; scrollbar-gutter: stable; }
         .library-header { display: grid; grid-template-columns: minmax(0,1fr) 110px; align-items: center; gap: 12px; height: 44px; }
         .library-header h2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .library-header button { height: 40px; padding: 6px 8px; white-space: nowrap; }
-        .library-fields { display: grid; gap: 12px; margin: 18px 0; }
+        .library-fields { display: grid; height: 40px; margin: 18px 0; }
         .library-fields label { display: grid; grid-template-columns: 80px minmax(0,1fr); gap: 12px; height: 40px; }
         .library-fields input, .library-fields select { width: 100%; min-width: 0; height: 40px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 6px 8px; font: inherit; }
-        .library-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: 40px; gap: 10px; }
+        .library-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: min(290px,100%); height: 40px; gap: 10px; }
         .library-actions button { min-width: 0; padding: 6px 8px; font-size: 14px; white-space: nowrap; }
         #library-message { height: 64px; line-height: 20px; padding: 6px 10px; margin: 16px 0 0; overflow: auto; font-size: 13px; overflow-wrap: anywhere; }
+        #command-library.delete-mode, #library-delete-confirm { background: #ffe082; color: #332600; border-color: #b78415; color-scheme: light; }
+        #command-library.delete-mode button, #library-delete-confirm button { background: #fff2c6; color: #332600; border-color: #b78415; }
+        #command-library.delete-mode select { background: #fff4cf; color: #332600; border-color: #b78415; }
+        #command-library.delete-mode #library-message { color: #332600; }
+        #command-library.delete-mode #library-delete, #library-delete-confirm #library-delete-yes { background: #9c4b00; color: #fff; border-color: #9c4b00; }
+        #library-delete-confirm { width: min(520px,calc(100% - 24px)); height: 260px; }
+        #library-delete-question { height: 84px; margin: 20px 0; color: inherit; line-height: 24px; overflow: auto; overflow-wrap: anywhere; }
         .rtc-title { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
         @media (max-width: 520px) { .command-heading { grid-template-columns: minmax(0,1fr); grid-template-rows: 40px 32px; gap: 0; height: 76px; } }
         .store-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 16px; margin-bottom: 16px; height: 44px; }
@@ -163,7 +171,14 @@
             <p id="led-message" role="status"></p>
         </section>
         <section class="spi-control" aria-label="Консоль шин">
-            <div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button></div>
+            <div class="console-toolbar">
+                <div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button></div>
+                <div class="library-controls">
+                    <button type="button" id="library-open-load">Загрузить</button>
+                    <button type="button" id="library-open-save">Сохранить</button>
+                    <button type="button" id="library-open-delete">Удалить</button>
+                </div>
+            </div>
             <div class="spi-title"><h2 id="bus-title">SPI2 · внешнее устройство</h2><p class="hint" id="bus-pins">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p></div>
             <div class="spi-settings">
                 <fieldset class="spi-only"><legend>Режим SPI</legend>
@@ -188,10 +203,6 @@
             </div>
             <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
             <p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p>
-            <div class="library-controls">
-                <button type="button" id="library-open-load">Загрузить</button>
-                <button type="button" id="library-open-save">Сохранить</button>
-            </div>
             <div class="store-bar"><span id="store-status" role="status">Проверка W25Q64JV…</span><span id="library-status" class="hint" role="status"></span></div>
             <div class="command-card">
                 <div class="command-heading"><label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label><p id="spi-message-0" class="command-message" role="status"></p></div>
@@ -226,16 +237,21 @@
     <dialog id="command-library" aria-labelledby="library-title">
         <div class="library-header"><h2 id="library-title">Библиотека команд</h2><button type="button" id="library-close">Закрыть</button></div>
         <div class="library-fields">
-            <label>Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="64">Новый набор</option></select></label>
-            <label>Имя<input type="text" id="library-name" maxlength="64" value="Default" aria-label="Имя набора, до 32 символов"></label>
+            <label id="library-select-row">Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="64">Новый набор</option></select></label>
+            <label id="library-name-row" hidden>Имя<input type="text" id="library-name" maxlength="64" value="Default" aria-label="Имя набора, до 32 символов"></label>
         </div>
         <div class="library-actions">
             <button type="button" id="library-load" disabled>Загрузить</button>
-            <button type="button" id="store-save" disabled>Сохранить</button>
-            <button type="button" id="library-delete" disabled>Удалить</button>
-            <button type="button" id="library-new" disabled>Сохранить как</button>
+            <button type="button" id="store-save" hidden disabled>Сохранить</button>
+            <button type="button" id="library-delete" hidden disabled>Удалить</button>
+            <button type="button" id="library-new" hidden disabled>Сохранить как</button>
         </div>
         <p id="library-message" role="status">Проверка W25Q64JV…</p>
+    </dialog>
+    <dialog id="library-delete-confirm" aria-labelledby="library-delete-title" aria-describedby="library-delete-question">
+        <h2 id="library-delete-title">Подтверждение удаления</h2>
+        <p id="library-delete-question">Удалить набор <strong id="library-delete-name" data-user-text></strong> из Flash?</p>
+        <div class="library-actions"><button type="button" id="library-delete-no" autofocus>Отмена</button><button type="button" id="library-delete-yes">Удалить</button></div>
     </dialog>
     <dialog id="diagnostics" aria-labelledby="diag-title">
         <div class="led-header"><h2 id="diag-title">Диагностика W5500</h2><button type="button" id="diag-close">Закрыть</button></div>
@@ -258,6 +274,13 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Загрузка набора": "Load set",
+            "Сохранение набора": "Save set",
+            "Удаление набора": "Delete set",
+            "Подтверждение удаления": "Confirm deletion",
+            "Удалить набор": "Delete set",
+            "из Flash?": "from Flash?",
+            "Отмена": "Cancel",
             "I2C-команда 1": "I2C command 1",
             "I2C-команда 2": "I2C command 2",
             "I2C-команда 3": "I2C command 3",
@@ -491,6 +514,13 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Загрузка набора": "セットの読み込み",
+            "Сохранение набора": "セットの保存",
+            "Удаление набора": "セットの削除",
+            "Подтверждение удаления": "削除の確認",
+            "Удалить набор": "セット",
+            "из Flash?": "をフラッシュから削除しますか？",
+            "Отмена": "キャンセル",
             "I2C-команда 1": "I2C コマンド 1",
             "I2C-команда 2": "I2C コマンド 2",
             "I2C-команда 3": "I2C コマンド 3",
@@ -1401,13 +1431,14 @@
             setText(get('library-status'), 'Наборов: ' + data.used + ' / 64 · недоступно: ' + data.blocked);
             libraryLoaded = true;
         }
-        function queueLibrary(kind)
+        let deleteTarget = null;
+        function queueLibrary(kind, confirmedId = null)
         {
             if (libraryBusy || saveBusy || !flashReady || storeWaiting)
             {
                 return;
             }
-            const id = Number(get('library-select').value);
+            const id = confirmedId === null ? Number(get('library-select').value) : confirmedId;
             if (id >= 64 || !Number.isInteger(id))
             {
                 return;
@@ -1416,8 +1447,17 @@
             {
                 return;
             }
-            if (kind === 'delete' && !confirm(translate('Удалить выбранный набор из Flash?')))
+            if (kind === 'delete' && confirmedId === null)
             {
+                const entry = librarySets.find(item => item.id === id);
+                if (!entry)
+                {
+                    return;
+                }
+                deleteTarget = {id, name: entry.name};
+                get('library-delete-name').textContent = '«' + entry.name + '»';
+                get('library-delete-confirm').showModal();
+                get('library-delete-no').focus();
                 return;
             }
             pendingLibrary = {kind, id};
@@ -1426,15 +1466,45 @@
             wakeUpdate();
         }
         get('library-select').addEventListener('change', libraryButtons);
-        function openLibrary(focusId)
+        function openLibrary(mode)
         {
+            get('command-library').className = mode === 'delete' ? 'delete-mode' : '';
+            get('library-select-row').hidden = mode === 'save';
+            get('library-name-row').hidden = mode !== 'save';
+            get('library-load').hidden = mode !== 'load';
+            get('store-save').hidden = mode !== 'save';
+            get('library-new').hidden = mode !== 'save';
+            get('library-delete').hidden = mode !== 'delete';
+            const titles = {load: 'Загрузка набора', save: 'Сохранение набора', delete: 'Удаление набора'};
+            setText(get('library-title'), titles[mode]);
             libraryButtons();
             get('command-library').showModal();
-            get(focusId).focus();
+            get(mode === 'save' ? 'library-name' : 'library-select').focus();
         }
-        get('library-open-load').addEventListener('click', () => openLibrary('library-select'));
-        get('library-open-save').addEventListener('click', () => openLibrary('library-name'));
+        get('library-open-load').addEventListener('click', () => openLibrary('load'));
+        get('library-open-save').addEventListener('click', () => openLibrary('save'));
+        get('library-open-delete').addEventListener('click', () => openLibrary('delete'));
         get('library-close').addEventListener('click', () => get('command-library').close());
+        function cancelDelete()
+        {
+            deleteTarget = null;
+        }
+        get('library-delete-confirm').addEventListener('cancel', cancelDelete);
+        get('library-delete-no').addEventListener('click', () =>
+        {
+            cancelDelete();
+            get('library-delete-confirm').close();
+        });
+        get('library-delete-yes').addEventListener('click', () =>
+        {
+            const target = deleteTarget;
+            cancelDelete();
+            get('library-delete-confirm').close();
+            if (target)
+            {
+                queueLibrary('delete', target.id);
+            }
+        });
         get('library-name').addEventListener('input', () =>
         {
             draftDirty = true;

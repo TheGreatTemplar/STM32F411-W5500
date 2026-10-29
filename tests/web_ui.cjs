@@ -345,12 +345,25 @@ async function test()
     elements.get('library-open-load').click();
     assert.equal(elements.get('command-library').open, true);
     assert.equal(elements.get('library-select').focused, true);
+    assert.equal(elements.get('library-title').textContent, 'Загрузка набора');
+    assert.equal(elements.get('library-name-row').hidden, true);
+    assert.equal(elements.get('library-load').hidden, false);
+    assert.equal(elements.get('store-save').hidden, true);
+    assert.equal(elements.get('library-new').hidden, true);
+    assert.equal(elements.get('library-delete').hidden, true);
     assert.equal(requests.length, beforeDialog);
     elements.get('library-close').click();
     assert.equal(elements.get('command-library').open, false);
     elements.get('library-open-save').click();
     assert.equal(elements.get('command-library').open, true);
     assert.equal(elements.get('library-name').focused, true);
+    assert.equal(elements.get('library-title').textContent, 'Сохранение набора');
+    assert.equal(elements.get('library-select-row').hidden, true);
+    assert.equal(elements.get('library-name-row').hidden, false);
+    assert.equal(elements.get('library-load').hidden, true);
+    assert.equal(elements.get('store-save').hidden, false);
+    assert.equal(elements.get('library-new').hidden, false);
+    assert.equal(elements.get('library-delete').hidden, true);
     assert.equal(elements.get('library-message').textContent, elements.get('store-status').textContent);
     elements.get('library-close').click();
     await vm.runInContext('update()', context); // Initial library catalog.
@@ -687,7 +700,39 @@ async function test()
     assert.equal(elements.get('spi-command-0').value, '9F 00');
     assert.equal(requests.filter((r) => r.url === '/api/spi').length, beforeLoadSpi);
     elements.get('library-select').value = '0';
+    const beforeDeleteDialog = requests.length;
+    elements.get('library-open-delete').click();
+    assert.equal(elements.get('command-library').className, 'delete-mode');
+    assert.equal(elements.get('library-title').textContent, 'Удаление набора');
+    assert.equal(elements.get('library-name-row').hidden, true);
+    assert.equal(elements.get('library-select-row').hidden, false);
+    assert.equal(elements.get('library-delete').hidden, false);
+    assert.equal(elements.get('store-save').hidden, true);
+    assert.equal(elements.get('library-load').hidden, true);
+    assert.equal(elements.get('library-new').hidden, true);
     elements.get('library-delete').click();
+    assert.equal(elements.get('library-delete-confirm').open, true);
+    assert.equal(elements.get('library-delete-no').focused, true);
+    assert.equal(requests.length, beforeDeleteDialog);
+    assert.equal(vm.runInContext('pendingLibrary', context), null);
+    const confirmedName = elements.get('library-delete-name').textContent;
+    elements.get('lang-en').click();
+    assert.equal(elements.get('library-delete-name').textContent, confirmedName);
+    elements.get('lang-ru').click();
+    elements.get('library-delete-no').click();
+    assert.equal(elements.get('library-delete-confirm').open, false);
+    assert.equal(vm.runInContext('deleteTarget', context), null);
+    assert.equal(requests.length, beforeDeleteDialog);
+    elements.get('library-delete').click();
+    elements.get('library-delete-confirm').cancel(); // Escape is also a cancellation.
+    elements.get('library-delete-confirm').close();
+    assert.equal(vm.runInContext('deleteTarget', context), null);
+    assert.equal(vm.runInContext('pendingLibrary', context), null);
+    elements.get('library-delete').click();
+    elements.get('library-select').value = '63'; // The confirmation pins the original ID.
+    elements.get('library-delete-yes').click();
+    elements.get('library-delete-yes').click(); // Double confirmation cannot queue another delete.
+    assert.equal(vm.runInContext('pendingLibrary.id', context), 0);
     await vm.runInContext('update()', context);
     vm.runInContext('nextStorePoll = 0', context);
     await vm.runInContext('update()', context);
