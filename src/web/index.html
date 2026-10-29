@@ -8,7 +8,9 @@
         :root { color-scheme: dark; font-family: system-ui, sans-serif; line-height: 1.4; background: #101923; color: #e9eff5; }
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
-        .console-toolbar { display: flex; justify-content: space-between; align-items: start; gap: 16px; height: 52px; margin-bottom: 8px; overflow-x: auto; }
+        .console-toolbar { display: flex; justify-content: space-between; align-items: start; gap: 16px; height: 64px; margin-bottom: 8px; overflow-x: auto; overflow-y: hidden; }
+        .bus-panel { flex: 1; min-width: 196px; display: grid; gap: 6px; }
+        .library-panel { width: 326px; flex: none; display: grid; gap: 6px; }
         .bus-switch { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: 196px; flex: none; height: 36px; gap: 8px; }
         .bus-switch button { height: 36px; padding: 5px 8px; font-size: 14px; }
         .bus-switch button[aria-pressed="true"] { color: #101923; background: #6ed8c4; border-color: #6ed8c4; }
@@ -94,10 +96,9 @@
         #library-delete-question { height: 48px; margin: 20px 0; color: inherit; line-height: 24px; overflow: auto; overflow-wrap: anywhere; }
         .rtc-title { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
         @media (max-width: 520px) { .command-heading { grid-template-columns: minmax(0,1fr); grid-template-rows: 40px 32px; gap: 0; height: 76px; } }
-        .store-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 16px; margin-bottom: 16px; height: 44px; }
-        #store-status { font-size: 13px; color: #a6b7c7; flex: 1; min-width: 0; height: 32px; line-height: 20px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        #library-status { flex: none; }
-        @media (max-width: 520px) { .store-bar { display: grid; grid-template-rows: 32px 20px; gap: 0; height: 64px; } #library-status { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
+        .flash-status { margin-top: 16px; }
+        #store-status { font-size: 13px; color: #a6b7c7; display: block; min-width: 0; height: 32px; line-height: 20px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #library-status { display: block; height: 20px; line-height: 20px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 520px) { .command-editor { grid-template-columns: minmax(0,1fr); } .command-editor button { justify-self: start; } }
         .spi-settings { display: flex; flex-wrap: wrap; gap: 16px; margin: 15px 0; align-items: stretch; }
         .spi-settings fieldset { margin: 0; height: 84px; padding: 8px 10.2px; }
@@ -119,13 +120,17 @@
         .language-switch button[aria-pressed="true"] { color: #6ed8c4; text-decoration: underline; text-underline-offset: 4px; }
         .diagnostic-buttons { display: grid; gap: 8px; width: 230px; }
         .diagnostic-buttons button { width: 100%; padding: 8px 10px; font-size: 14px; }
-        #mcu-diagnostics { width: min(680px,calc(100% - 24px)); height: 230px; }
+        #mcu-diagnostics { width: min(760px,calc(100% - 24px)); height: min(640px,90vh); overflow: auto; scrollbar-gutter: stable; }
         #mcu-diagnostics .led-control { margin-top: 18px; }
         #mcu-diagnostics #led-message { display: block; height: 21px; }
-        .console-state { display: flex; align-items: center; gap: 16px; height: 32px; margin: 12px 0; }
+        .console-state { display: flex; align-items: center; gap: 10px; height: 20px; min-width: 0; margin: 0; white-space: nowrap; }
         .console-state p { margin: 0; }
+        #spi-queue { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        @media (max-width: 620px) { .console-toolbar { height: 82px; } }
         #spi-config-status { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .rtc-control + .channels { margin-top: 20px; }
+        #mcu-diagnostics .channels { margin-top: 18px; gap: 12px; }
+        .adc-notes { margin-top: 12px; font-size: 13px; }
+        .adc-notes p { margin: 8px 0; }
         .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
         dialog { width: min(1100px,calc(100% - 24px)); max-height: 90vh; padding: 20.4px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 18px; }
         dialog::backdrop { background: #050b13bb; }
@@ -146,6 +151,12 @@
             <div><div class="eyebrow">BLACK PILL / W5500</div><h1>Монитор STM32F411</h1></div>
             <div class="toolbar"><nav class="language-switch" aria-label="Выбор языка"><button type="button" id="lang-en" lang="en" aria-pressed="false">Eng</button><button type="button" id="lang-ru" lang="ru" aria-pressed="true">Рус</button><button type="button" id="lang-ja" lang="ja" aria-pressed="false">日本語</button></nav><div id="status" role="status">Подключение…</div><div class="diagnostic-buttons"><button type="button" id="diag-open">Диагностика W5500</button><button type="button" id="mcu-diag-open">Диагностика STM32F411</button></div></div>
         </header>
+        <section class="details">
+            <div>Адрес<strong id="address">172.16.236.220:5025 · —</strong></div>
+            <div>Время работы<strong id="uptime">—</strong></div>
+            <div>Измерений<strong id="samples">—</strong></div>
+            <div>Опорное напряжение<strong id="vref">—</strong></div>
+        </section>
         <section class="rtc-control" aria-label="Часы микроконтроллера">
             <div class="rtc-header"><div class="rtc-title"><h2>Часы стенда · RTC / LSE</h2><span id="rtc-message" role="status">Запуск LSE…</span></div><div class="rtc-reading"><time id="rtc-value">—</time><span id="rtc-date">—</span></div></div>
             <div class="rtc-settings">
@@ -155,34 +166,15 @@
                 <button type="button" id="rtc-sync" disabled>Синхронизировать с ПК</button>
             </div>
         </section>
-        <section class="channels" aria-label="Каналы АЦП">
-            <article>
-                <div class="channel-header"><h2>Канал 1</h2><div class="channel-value"><span class="voltage" id="v0">—</span><span class="unit"> В</span></div></div>
-                <div class="pin">PA0 / ADC1_IN0</div>
-                <progress id="p0" max="4095" value="0" aria-label="Уровень PA0"></progress>
-                <div class="raw">Код АЦП: <span id="r0">—</span> / 4095</div>
-            </article>
-            <article>
-                <div class="channel-header"><h2>Канал 2</h2><div class="channel-value"><span class="voltage" id="v1">—</span><span class="unit"> В</span></div></div>
-                <div class="pin">PA1 / ADC1_IN1</div>
-                <progress id="p1" max="4095" value="0" aria-label="Уровень PA1"></progress>
-                <div class="raw">Код АЦП: <span id="r1">—</span> / 4095</div>
-            </article>
-        </section>
-        <section class="details">
-            <div>Адрес<strong id="address">172.16.236.220:5025 · —</strong></div>
-            <div>Время работы<strong id="uptime">—</strong></div>
-            <div>Измерений<strong id="samples">—</strong></div>
-            <div>Опорное напряжение<strong id="vref">—</strong></div>
-        </section>
         <section class="spi-control" aria-label="Консоль шин">
             <div class="console-toolbar">
-                <div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button></div>
-                <div class="library-controls">
+                <div class="bus-panel"><div class="bus-switch" role="group" aria-label="Выбор шины"><button type="button" id="bus-spi" aria-pressed="true">SPI</button><button type="button" id="bus-i2c" aria-pressed="false">I2C</button></div>
+                <div class="console-state"><p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p><span class="hint spi-only" id="spi-config-status" role="status"></span></div></div>
+                <div class="library-panel"><div class="library-controls">
                     <button type="button" id="library-open-load">Загрузить</button>
                     <button type="button" id="library-open-save">Сохранить</button>
                     <button type="button" id="library-open-delete">Удалить</button>
-                </div>
+                </div><span id="library-status" class="hint" role="status"></span></div>
             </div>
             <div class="spi-title"><h2 id="bus-title">SPI2 · внешнее устройство</h2><p class="hint" id="bus-pins">PB13 SCK · PB14 MISO · PB15 MOSI · PB12 CS · логика 3,3 В · общий GND</p></div>
             <div class="spi-settings">
@@ -207,8 +199,6 @@
                 <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label></div>
             </div>
             <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
-            <div class="console-state"><p class="hint" id="spi-queue" role="status">SPI свободна · очередь: 0 / 4</p><span class="hint spi-only" id="spi-config-status" role="status"></span></div>
-            <div class="store-bar"><span id="store-status" role="status">Проверка W25Q64JV…</span><span id="library-status" class="hint" role="status"></span></div>
             <div class="command-card">
                 <div class="command-heading"><label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label><p id="spi-message-0" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
@@ -234,10 +224,7 @@
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-3">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
             </div>
         </section>
-        <footer>
-            <p>Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.</p>
-            <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
-        </footer>
+
     </main>
     <dialog id="command-library" aria-labelledby="library-title">
         <div class="library-header"><h2 id="library-title">Библиотека команд</h2><button type="button" id="library-close">Закрыть</button></div>
@@ -264,6 +251,25 @@
             <div class="led-header"><h2>Синий светодиод · PC13</h2><div class="buttons"><button type="button" id="led-on" disabled>ВКЛ</button><button type="button" id="led-off" disabled>ВЫКЛ</button></div><span id="led-state" role="status">Состояние: —</span></div>
             <p id="led-message" role="status"></p>
         </section>
+        <section class="channels" aria-label="Каналы АЦП">
+            <article>
+                <div class="channel-header"><h2>Канал 1</h2><div class="channel-value"><span class="voltage" id="v0">—</span><span class="unit"> В</span></div></div>
+                <div class="pin">PA0 / ADC1_IN0</div>
+                <progress id="p0" max="4095" value="0" aria-label="Уровень PA0"></progress>
+                <div class="raw">Код АЦП: <span id="r0">—</span> / 4095</div>
+            </article>
+            <article>
+                <div class="channel-header"><h2>Канал 2</h2><div class="channel-value"><span class="voltage" id="v1">—</span><span class="unit"> В</span></div></div>
+                <div class="pin">PA1 / ADC1_IN1</div>
+                <progress id="p1" max="4095" value="0" aria-label="Уровень PA1"></progress>
+                <div class="raw">Код АЦП: <span id="r1">—</span> / 4095</div>
+            </article>
+        </section>
+        <div class="adc-notes">
+            <p>Два 12-битных канала. Обновление страницы: 250 мс. Вольты рассчитаны по заданному опорному напряжению.</p>
+            <p>Подавать сигнал в диапазоне 0…VDDA (номинально 3,3 В). У источника и платы должна быть общая земля. Кнопка KEY на Black Pill влияет на PA0.</p>
+        </div>
+        <div class="flash-status"><span id="store-status" role="status">Проверка W25Q64JV…</span></div>
     </dialog>
     <dialog id="diagnostics" aria-labelledby="diag-title">
         <div class="led-header"><h2 id="diag-title">Диагностика W5500</h2><button type="button" id="diag-close">Закрыть</button></div>
@@ -473,7 +479,7 @@
             "Чтение диагностики…": "Reading diagnostics…",
             "Шлюз": "Gateway",
             "команды ещё не сохранены": "commands not saved yet",
-            "сохранена версия": "saved revision",
+            "запись №": "record no.",
             "Выбор языка": "Language",
             "Русский": "Russian",
             "Команда 1 · передаваемые данные · до 256 байт": "Command 1 · transmit data · up to 256 bytes",
@@ -721,7 +727,7 @@
             "Чтение диагностики…": "診断情報を読み出し中…",
             "Шлюз": "ゲートウェイ",
             "команды ещё не сохранены": "コマンドは未保存です",
-            "сохранена версия": "保存済みバージョン",
+            "запись №": "レコード番号",
             "Выбор языка": "言語",
             "Русский": "ロシア語",
             "Команда 1 · передаваемые данные · до 256 байт": "コマンド 1 · 送信データ · 最大 256 バイト",
@@ -1417,7 +1423,7 @@
                 }
                 saveBusy = false;
                 setText(get('store-status'), data.error ? (errors[data.error] || 'Ошибка Flash') :
-                    ('W25Q64JV · 8 Мбайт · ' + (data.has_saved ? 'сохранена версия ' + data.sequence : 'команды ещё не сохранены')));
+                    ('W25Q64JV · 8 Мбайт · ' + (data.has_saved ? 'запись № ' + data.sequence : 'команды ещё не сохранены')));
             }
             if (completed && data.save_ok)
             {
