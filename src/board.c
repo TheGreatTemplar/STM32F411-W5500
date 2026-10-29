@@ -334,6 +334,29 @@ bool board_spi_console_config(const spi_command_t *command)
     return true;
 }
 
+/* DWT runs at the selected core clock, independently of the millisecond tick.
+ * Inline the ready path: do not call a timer function between data accesses. */
+__STATIC_FORCEINLINE bool spi2_wait(uint32_t mask, uint32_t value, uint32_t start,
+                                  uint32_t budget)
+{
+    for (;;)
+    {
+        const uint32_t status = SPI2->SR;
+        if ((status & (SPI_SR_OVR | SPI_SR_MODF)) != 0U)
+        {
+            return false;
+        }
+        if ((status & mask) == value)
+        {
+            return true;
+        }
+        if ((uint32_t)(DWT->CYCCNT - start) >= budget)
+        {
+            return false;
+        }
+    }
+}
+
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES])
 {
     spi_clock_plan_t plan;
@@ -341,7 +364,7 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     const uint32_t saved_acr = FLASH->ACR;
     const uint32_t saved_adc = ADC->CCR;
     uint32_t cr1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI;
-    uint32_t start;
+    uint32_t budget;
     uint32_t cycles;
     size_t i;
     bool ok = true;
@@ -382,37 +405,40 @@ bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_
     {
         __NOP();
     }
+    /* Expected wire time plus 100 us of software/peripheral margin.
+     * The maximum budget is well below one CYCCNT wrap at every supported rate. */
+    budget = (uint32_t)command->size * 8U * (plan.system_hz / command->hz) +
+             plan.system_hz / 10000U;
     cycles = DWT->CYCCNT;
     GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 12U : 28U);
-    start = board_millis();
-    for (i = 0U; ok && (i < command->size); ++i)
+    ok = spi2_wait(SPI_SR_TXE, SPI_SR_TXE, cycles, budget);
+    if (ok)
     {
-        while ((SPI2->SR & SPI_SR_TXE) == 0U)
-        {
-            if ((uint32_t)(board_millis() - start) >= 100U)
-            {
-                ok = false;
-                break;
-            }
-        }
-        if (!ok)
-        {
-            break;
-        }
-        *(__IO uint8_t *)&SPI2->DR = command->tx[i];
-        while ((SPI2->SR & SPI_SR_RXNE) == 0U)
-        {
-            if ((uint32_t)(board_millis() - start) >= 100U)
-            {
-                ok = false;
-                break;
-            }
-        }
-        rx[i] = *(__IO uint8_t *)&SPI2->DR;
+        *(__IO uint8_t *)&SPI2->DR = command->tx[0];
     }
-    while (ok && ((SPI2->SR & SPI_SR_BSY) != 0U))
+    /* RM0383 full duplex: queue byte n before waiting for RX byte n-1.
+     * Keep at most two bytes outstanding, so the one-byte RX buffer is drained. */
+    for (i = 1U; ok && (i < command->size); ++i)
     {
-        ok = (uint32_t)(board_millis() - start) < 100U;
+        ok = spi2_wait(SPI_SR_TXE, SPI_SR_TXE, cycles, budget);
+        if (ok)
+        {
+            *(__IO uint8_t *)&SPI2->DR = command->tx[i];
+            ok = spi2_wait(SPI_SR_RXNE, SPI_SR_RXNE, cycles, budget);
+        }
+        if (ok)
+        {
+            rx[i - 1U] = *(__IO uint8_t *)&SPI2->DR;
+        }
+    }
+    if (ok)
+    {
+        ok = spi2_wait(SPI_SR_RXNE, SPI_SR_RXNE, cycles, budget);
+        if (ok)
+        {
+            rx[command->size - 1U] = *(__IO uint8_t *)&SPI2->DR;
+            ok = spi2_wait(SPI_SR_TXE | SPI_SR_BSY, SPI_SR_TXE, cycles, budget);
+        }
     }
     GPIOB->BSRR = 1UL << (command->cs_high != 0U ? 28U : 12U);
     spi_console_duration_us =
