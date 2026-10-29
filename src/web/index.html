@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Монитор STM32F411</title>
     <style>
-        :root { color-scheme: dark; font-family: system-ui, sans-serif; line-height: 1.4; background: #101923; color: #e9eff5; }
+        :root { --control-height: 30px; --panel-padding: 12px; --control-gap: 8px; color-scheme: dark; font-family: system-ui, sans-serif; line-height: 1.4; background: #101923; color: #e9eff5; }
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
         .console-toolbar { display: flex; justify-content: space-between; align-items: start; gap: 16px; height: 64px; margin-bottom: 8px; overflow-x: auto; overflow-y: hidden; }
@@ -183,6 +183,52 @@
         .system-dialog button { padding: 7px 12px; font-size: 14px; }
         #network-reconnect { display: block; height: 24px; color: #6ed8c4; }
         @media (max-width: 520px) { .system-fields { grid-template-columns: 1fr; } }
+        button, .bus-switch button, .library-controls button, .library-header button,
+        .command-editor button, .rtc-button-column button, .system-dialog button,
+        .diagnostic-buttons button, #network-open, .language-switch button
+        {
+            height: var(--control-height);
+            padding-top: 3px;
+            padding-bottom: 3px;
+            line-height: 20px;
+        }
+        input:not([type="radio"]):not([type="checkbox"]), select,
+        .library-fields input, .library-fields select, .system-fields input,
+        .rtc-settings input, .spi-selects select
+        {
+            height: var(--control-height);
+            padding-top: 3px;
+            padding-bottom: 3px;
+        }
+        .command-editor textarea, .command-card .spi-output
+        {
+            height: var(--control-height);
+            min-height: var(--control-height);
+            padding-top: 1px;
+            padding-bottom: 1px;
+        }
+        article, .details, .led-control, .rtc-control, .spi-control, dialog
+        {
+            padding: var(--panel-padding);
+        }
+        .bus-switch, .library-controls, .library-header, .library-fields,
+        .library-fields label, .library-actions
+        {
+            height: var(--control-height);
+        }
+        .buttons, .led-header, .toolbar, .command-editor, .library-header,
+        .library-fields label, .library-actions, .rtc-settings, .spi-settings,
+        .system-fields, .diag-grid, .rtc-button-column, .bus-panel, .library-panel
+        {
+            gap: var(--control-gap);
+        }
+        .console-toolbar { height: 58px; gap: var(--control-gap); }
+        .command-card { padding: var(--panel-padding) 0; }
+        .library-fields, .system-fields { margin: var(--panel-padding) 0; }
+        #mcu-diagnostics .led-control, #mcu-diagnostics .channels { margin-top: var(--panel-padding); }
+        .diag-grid { margin: var(--panel-padding) 0; }
+        .diag-grid div, fieldset, .spi-settings fieldset { padding: var(--panel-padding); }
+        @media (max-width: 620px) { .console-toolbar { height: 74px; } }
     </style>
 </head>
 <body>
