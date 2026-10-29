@@ -54,8 +54,8 @@
         .rtc-control { margin-top: 20px; padding: 20.4px; background: #182634; border: 1px solid #2b4052; border-radius: 16px; }
         .rtc-header, .rtc-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
         .rtc-header { justify-content: space-between; }
-        .rtc-reading { display: flex; align-items: baseline; gap: 12px; font-variant-numeric: tabular-nums; }
-        #rtc-value { font-size: 26px; color: #6ed8c4; }
+        .rtc-reading { display: flex; flex-direction: column; align-items: flex-end; gap: 0; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
+        #rtc-value { font-size: 31.2px; color: #6ed8c4; }
         #rtc-date { color: #a6b7c7; }
         .rtc-settings { margin-top: 12px; }
         #rtc-message { font-size: 13px; margin: 0; color: #a6b7c7; }
@@ -72,8 +72,12 @@
         .result-title .hint { margin: 0; }
         .command-card .spi-output { margin: 6px 0; font-size: 13px; }
         .input-error { background: #ffe082; color: #332600 !important; padding: 6px 10px; border-radius: 6px; }
-        .command-heading { display: grid; grid-template-columns: minmax(0,42%) minmax(0,1fr); gap: 16px; align-items: center; height: 44px; }
-        .command-heading label { font-size: 14px; line-height: 20px; }
+        .command-heading { display: grid; grid-template-columns: minmax(0,62%) minmax(0,1fr); gap: 16px; align-items: center; height: 44px; }
+        .command-heading label { font-size: 14px; line-height: 20px; white-space: nowrap; }
+        .command-label { display: grid; grid-template-columns: 84px minmax(65px,1fr) 135px; align-items: center; gap: 8px; min-width: 0; }
+        .command-label .hint { white-space: nowrap; }
+        .command-name { width: 100%; min-width: 65px; height: 30px; padding: 4px 8px; color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; font: inherit; font-size: 14px; }
+        @media (max-width: 420px) { .command-label { grid-template-columns: 76px minmax(65px,1fr) 112px; gap: 6px; } .command-label .hint { font-size: 11px; } .command-heading label { font-size: 12px; } }
         .command-message { height: 32px; min-height: 0; line-height: 20px; font-size: 13px; margin: 0; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .library-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; width: 326px; flex: none; height: 36px; }
         .library-controls button { min-width: 0; height: 36px; padding: 5px 8px; font-size: 14px; white-space: nowrap; }
@@ -200,25 +204,25 @@
             </div>
             <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
             <div class="command-card">
-                <div class="command-heading"><label for="spi-command-0">Команда 1 · передаваемые данные · до 256 байт</label><p id="spi-message-0" class="command-message" role="status"></p></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-0">Команда 1</label><input type="text" class="command-name" id="spi-name-0" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 1, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-0" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-0" maxlength="768" spellcheck="false" aria-label="SPI-команда 1">9F 00 00 00</textarea><button type="button" id="spi-send-0">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-0" readonly aria-label="TX команды 1">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-0">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-0" readonly aria-label="RX команды 1">—</textarea>
             </div>
             <div class="command-card">
-                <div class="command-heading"><label for="spi-command-1">Команда 2 · передаваемые данные · до 256 байт</label><p id="spi-message-1" class="command-message" role="status"></p></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-1">Команда 2</label><input type="text" class="command-name" id="spi-name-1" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 2, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-1" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-1" maxlength="768" spellcheck="false" aria-label="SPI-команда 2"></textarea><button type="button" id="spi-send-1">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-1" readonly aria-label="TX команды 2">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-1">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-1" readonly aria-label="RX команды 2">—</textarea>
             </div>
             <div class="command-card">
-                <div class="command-heading"><label for="spi-command-2">Команда 3 · передаваемые данные · до 256 байт</label><p id="spi-message-2" class="command-message" role="status"></p></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-2">Команда 3</label><input type="text" class="command-name" id="spi-name-2" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 3, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-2" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-2" maxlength="768" spellcheck="false" aria-label="SPI-команда 3"></textarea><button type="button" id="spi-send-2">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-2" readonly aria-label="TX команды 3">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-2">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-2" readonly aria-label="RX команды 3">—</textarea>
             </div>
             <div class="command-card">
-                <div class="command-heading"><label for="spi-command-3">Команда 4 · передаваемые данные · до 256 байт</label><p id="spi-message-3" class="command-message" role="status"></p></div>
+                <div class="command-heading"><div class="command-label"><label for="spi-command-3">Команда 4</label><input type="text" class="command-name" id="spi-name-3" maxlength="64" spellcheck="false" autocomplete="off" aria-label="Имя команды 4, до 32 символов"><span class="hint">(до 256 байт)</span></div><p id="spi-message-3" class="command-message" role="status"></p></div>
                 <div class="command-editor"><textarea rows="1" id="spi-command-3" maxlength="768" spellcheck="false" aria-label="SPI-команда 4"></textarea><button type="button" id="spi-send-3">Передать</button></div>
                 <div class="result-title"><span>TX</span><span class="hint">Байты последней передачи к устройству</span></div><textarea rows="1" class="spi-output" id="spi-tx-3" readonly aria-label="TX команды 4">—</textarea>
                 <div class="result-title"><span>RX</span><span class="hint" id="rx-hint-3">Байты с MISO, принятые во время этой передачи</span></div><textarea rows="1" class="spi-output" id="spi-rx-3" readonly aria-label="RX команды 4">—</textarea>
@@ -292,6 +296,8 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "до 256 байт": "up to 256 bytes",
+            "Имя команды: до 32 символов, без управляющих символов.": "Command name: up to 32 characters, without control characters.",
             "Перенос наборов I2C…": "Migrating I2C sets…",
             "Диагностика STM32F411": "STM32F411 diagnostics",
             "Применение настроек SPI…": "Applying SPI settings…",
@@ -482,19 +488,19 @@
             "запись №": "record no.",
             "Выбор языка": "Language",
             "Русский": "Russian",
-            "Команда 1 · передаваемые данные · до 256 байт": "Command 1 · transmit data · up to 256 bytes",
+            "Имя команды 1, до 32 символов": "Command 1 name, up to 32 characters",
             "SPI-команда 1": "SPI command 1",
             "RX команды 1": "Command 1 RX",
             "TX команды 1": "Command 1 TX",
-            "Команда 2 · передаваемые данные · до 256 байт": "Command 2 · transmit data · up to 256 bytes",
+            "Имя команды 2, до 32 символов": "Command 2 name, up to 32 characters",
             "SPI-команда 2": "SPI command 2",
             "RX команды 2": "Command 2 RX",
             "TX команды 2": "Command 2 TX",
-            "Команда 3 · передаваемые данные · до 256 байт": "Command 3 · transmit data · up to 256 bytes",
+            "Имя команды 3, до 32 символов": "Command 3 name, up to 32 characters",
             "SPI-команда 3": "SPI command 3",
             "RX команды 3": "Command 3 RX",
             "TX команды 3": "Command 3 TX",
-            "Команда 4 · передаваемые данные · до 256 байт": "Command 4 · transmit data · up to 256 bytes",
+            "Имя команды 4, до 32 символов": "Command 4 name, up to 32 characters",
             "SPI-команда 4": "SPI command 4",
             "RX команды 4": "Command 4 RX",
             "TX команды 4": "Command 4 TX",
@@ -540,6 +546,8 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "до 256 байт": "最大 256 バイト",
+            "Имя команды: до 32 символов, без управляющих символов.": "コマンド名は32文字以内で、制御文字は使用できません。",
             "Перенос наборов I2C…": "I2C セットを移行中…",
             "Диагностика STM32F411": "STM32F411 診断",
             "Применение настроек SPI…": "SPI 設定を適用中…",
@@ -730,19 +738,19 @@
             "запись №": "レコード番号",
             "Выбор языка": "言語",
             "Русский": "ロシア語",
-            "Команда 1 · передаваемые данные · до 256 байт": "コマンド 1 · 送信データ · 最大 256 バイト",
+            "Имя команды 1, до 32 символов": "コマンド 1 名、32文字以内",
             "SPI-команда 1": "SPI コマンド 1",
             "RX команды 1": "コマンド 1 RX",
             "TX команды 1": "コマンド 1 TX",
-            "Команда 2 · передаваемые данные · до 256 байт": "コマンド 2 · 送信データ · 最大 256 バイト",
+            "Имя команды 2, до 32 символов": "コマンド 2 名、32文字以内",
             "SPI-команда 2": "SPI コマンド 2",
             "RX команды 2": "コマンド 2 RX",
             "TX команды 2": "コマンド 2 TX",
-            "Команда 3 · передаваемые данные · до 256 байт": "コマンド 3 · 送信データ · 最大 256 バイト",
+            "Имя команды 3, до 32 символов": "コマンド 3 名、32文字以内",
             "SPI-команда 3": "SPI コマンド 3",
             "RX команды 3": "コマンド 3 RX",
             "TX команды 3": "コマンド 3 TX",
-            "Команда 4 · передаваемые данные · до 256 байт": "コマンド 4 · 送信データ · 最大 256 バイト",
+            "Имя команды 4, до 32 символов": "コマンド 4 名、32文字以内",
             "SPI-команда 4": "SPI コマンド 4",
             "RX команды 4": "コマンド 4 RX",
             "TX команды 4": "コマンド 4 TX",
@@ -1075,7 +1083,7 @@
             const ids = ['spi-hz', 'spi-format', 'i2c-hz', 'i2c-address', 'i2c-operation', 'i2c-read', 'library-name'];
             for (let i = 0; i < 4; ++i)
             {
-                ids.push('spi-command-' + i, 'spi-tx-' + i, 'spi-rx-' + i);
+                ids.push('spi-name-' + i, 'spi-command-' + i, 'spi-tx-' + i, 'spi-rx-' + i);
             }
             return {values: Object.fromEntries(ids.map(id => [id, get(id).value])),
                 checks: Object.fromEntries(['spi-msb','spi-lsb','spi-cs-low','spi-cs-high',...Array.from({length: 4}, (_, i) => 'spi-mode-' + i)].map(id => [id, get(id).checked])),
@@ -1129,6 +1137,7 @@
                 get('i2c-read').value = '1';
                 for (let i = 0; i < 4; ++i)
                 {
+                    get('spi-name-' + i).value = '';
                     get('spi-command-' + i).value = '';
                     get('spi-tx-' + i).value = '—';
                     get('spi-rx-' + i).value = '—';
@@ -1263,7 +1272,7 @@
         }
         function draftSnapshot()
         {
-            return JSON.stringify([get('library-name').value || '', settingsLine(), ...Array.from({length: 4}, (_, i) => get('spi-command-' + i).value)]);
+            return JSON.stringify([get('library-name').value || '', settingsLine(), ...Array.from({length: 4}, (_, i) => [get('spi-name-' + i).value, get('spi-command-' + i).value])]);
         }
         function markDirty()
         {
@@ -1318,6 +1327,15 @@
             spiButtons();
             wakeUpdate();
         }
+        function commandNameError(value)
+        {
+            const chars = Array.from(value);
+            return chars.length > 32 || /[\x00-\x1F\x7F-\x9F]/.test(value) || chars.some(ch =>
+            {
+                const code = ch.codePointAt(0);
+                return code >= 0xD800 && code <= 0xDFFF;
+            }) ? 'Имя команды: до 32 символов, без управляющих символов.' : '';
+        }
         function queueSave(asNew = false)
         {
             if (saveBusy || !flashReady || storeWaiting || libraryBusy)
@@ -1334,7 +1352,7 @@
             }
             for (let i = 0; i < 4; ++i)
             {
-                const error = validateText(texts[i], true);
+                const error = commandNameError(get('spi-name-' + i).value) || validateText(texts[i], true);
                 if (error || texts[i].length > 768)
                 {
                     spiMessage(i, error || 'Максимум 768 символов для сохранения.', true);
@@ -1350,7 +1368,9 @@
                 setText(get('store-status'), 'Имя: от 1 до 32 символов, без управляющих символов и слешей.');
                 return;
             }
-            const snapshot = settingsLine() + '\nlengths=' + texts.map((text) => text.length).join(',') + '\n' + texts.join('');
+            const names = Array.from({length: 4}, (_, i) => get('spi-name-' + i).value || '');
+            const snapshot = settingsLine() + '\nlengths=' + texts.map((text) => text.length).join(',') + '\n' + texts.join('') +
+                '\nnames=' + names.map(name => new TextEncoder().encode(name).length).join(',') + '\n' + names.join('');
             pendingSave = 'save ' + (asNew ? 128 : selectedSet) + ' ' + new TextEncoder().encode(name).length + '\n' + name + '\n' + snapshot;
             saveFingerprint = draftSnapshot();
             saveBusy = true;
@@ -1388,6 +1408,7 @@
                 for (let i = 0; i < 4; ++i)
                 {
                     get('spi-mode-' + i).checked = settings.mode === i;
+                    get('spi-name-' + i).value = data.command_names?.[i] || '';
                     get('spi-command-' + i).value = data.commands[i];
                     formatHexInput(get('spi-command-' + i));
                     rememberCommand(i);
@@ -1574,6 +1595,14 @@
         for (let i = 0; i < 4; ++i)
         {
             get('spi-send-' + i).addEventListener('click', () => queueSpi(i));
+            get('spi-name-' + i).addEventListener('input', () =>
+            {
+                const field = get('spi-name-' + i);
+                field.value = Array.from(field.value).slice(0, 32).join('');
+                const error = commandNameError(field.value);
+                spiMessage(i, error, !!error);
+                markDirty();
+            });
             const field = get('spi-command-' + i);
             field.addEventListener('beforeinput', (event) =>
             {

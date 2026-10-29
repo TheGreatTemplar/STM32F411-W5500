@@ -229,7 +229,17 @@ const context = vm.createContext({
                     payload = payload.slice(Number(length));
                     return command;
                 });
-                Object.assign(saved, {id, name, has_saved: true, settings, commands});
+                const command_names = [];
+                assert.ok(payload.startsWith('\nnames='));
+                const endNames = payload.indexOf('\n', 1);
+                let nameBytes = new TextEncoder().encode(payload.slice(endNames + 1));
+                for (const size of payload.slice(7, endNames).split(',').map(Number))
+                {
+                    command_names.push(new TextDecoder().decode(nameBytes.slice(0, size)));
+                    nameBytes = nameBytes.slice(size);
+                }
+                assert.equal(nameBytes.length, 0);
+                Object.assign(saved, {id, name, has_saved: true, settings, commands, command_names});
                 libraryRecords.set(id, structuredClone(saved));
                 flashBusy = true;
                 return {ok: true, json: async () => ({...saved, busy: true})};
@@ -522,7 +532,7 @@ async function test()
     await vm.runInContext('update()', context);
     assert.equal(requests.at(-1).url, '/api/library');
     assert.match(requests.at(-1).options.body, /^save 63 7\nDefault\n/);
-    assert.match(requests.at(-1).options.body, /lengths=5,5,0,5\n9F 00AA BB01 02$/);
+    assert.match(requests.at(-1).options.body, /lengths=5,5,0,5\n9F 00AA BB01 02\nnames=0,0,0,0\n$/);
     assert.equal(elements.get('store-save').disabled, true);
     vm.runInContext('nextStorePoll = 0', context);
     await vm.runInContext('update()', context);
@@ -833,7 +843,7 @@ async function test()
     elements.get('library-name').input();
     elements.get('library-new').click();
     await vm.runInContext('update()', context);
-    assert.match(requests.at(-1).options.body, /bus=1.*op=1 read=2.*\nlengths=0,0,0,0\n$/);
+    assert.match(requests.at(-1).options.body, /bus=1.*op=1 read=2.*\nlengths=0,0,0,0\n\nnames=0,0,0,0\n$/);
     vm.runInContext('nextStorePoll = 0', context);
     await vm.runInContext('update()', context);
     for (let i = 0; i < 16; ++i)
@@ -857,6 +867,42 @@ async function test()
     assert.equal(elements.get('library-select').children[1].textContent, 'I2C · I2C read');
     elements.get('lang-ja').click();
     assert.equal(elements.get('bus-title').textContent, 'I2C1 · 外部デバイス');
+    for (const [i, name] of ['RFIC03', 'Проверка', '日本語', '😀'.repeat(32)].entries())
+    {
+        elements.get('spi-name-' + i).value = name;
+        elements.get('spi-name-' + i).input();
+    }
+    const namedDraft = vm.runInContext('draftSnapshot()', context);
+    elements.get('lang-en').click();
+    assert.equal(elements.get('spi-name-1').value, 'Проверка');
+    elements.get('spi-name-0').value = 'A'.repeat(33);
+    elements.get('spi-name-0').input();
+    assert.equal(elements.get('spi-name-0').value.length, 32);
+    elements.get('spi-name-0').value = 'RFIC03';
+    elements.get('spi-name-0').input();
+    assert.equal(vm.runInContext('draftSnapshot()', context), namedDraft);
+    elements.get('bus-spi').click();
+    await vm.runInContext('update()', context);
+    elements.get('bus-i2c').click();
+    assert.equal(vm.runInContext('consoleBus', context), 1);
+    assert.equal(elements.get('spi-name-2').value, '日本語');
+    elements.get('library-name').value = 'I2C read';
+    elements.get('store-save').click();
+    await vm.runInContext('update()', context);
+    for (let i = 0; i < 5 && !requests.at(-1).options.body?.startsWith('save '); ++i)
+    {
+        await vm.runInContext('update()', context);
+    }
+    assert.match(requests.at(-1).options.body, /names=6,16,9,128\nRFIC03Проверка日本語/);
+    vm.runInContext('nextStorePoll = 0', context);
+    await vm.runInContext('update()', context);
+    assert.deepEqual(Array.from(saved.command_names), ['RFIC03', 'Проверка', '日本語', '😀'.repeat(32)]);
+    elements.get('spi-name-1').value = 'Changed';
+    elements.get('spi-name-1').input();
+    vm.runInContext('showStore(' + JSON.stringify(saved) + ', true)', context);
+    assert.equal(elements.get('spi-name-1').value, 'Changed');
+    vm.runInContext('draftDirty = false; showStore(' + JSON.stringify(saved) + ', true)', context);
+    assert.equal(elements.get('spi-name-1').value, 'Проверка');
     console.log('Web UI: SPI/I2C switch, isolated drafts, read/write/write-read, named library, NACK/no retry, RU/EN/JA, queue and RTC/ADC/LED passed');
 }
 

@@ -14,15 +14,9 @@ static bool fail_io;
 static bool unsupported;
 static bool alternate_id;
 
-uint32_t board_millis(void)
-{
-    return ++now;
-}
+uint32_t board_millis(void) { return ++now; }
 
-void board_delay(uint32_t duration)
-{
-    now += duration;
-}
+void board_delay(uint32_t duration) { now += duration; }
 
 bool board_flash_transfer(const uint8_t *prefix, size_t prefix_size, const uint8_t *tx, uint8_t *rx,
                           size_t size)
@@ -436,6 +430,22 @@ int test_entry(void)
     CHECK(command_library_save(63U, "Default", 7U, a, sizeof(a) - 1U) == STORE_OK);
     CHECK(finish_save()); /* This newer SPI file must remain the default after migration. */
     memcpy(media + OLD_BASE, media, 8192U);
+    /* Build genuine v3 fixtures: older CRC/payload excludes v4 command names. */
+    for (i = 0U; i < 2U; ++i)
+    {
+        uint8_t *record = media + OLD_BASE + i * 4096U;
+        uint32_t word;
+        if (record[4] != 4U)
+        {
+            continue;
+        }
+        word = 3U;
+        memcpy(record + 4U, &word, 4U);
+        word = 3284U - 24U;
+        memcpy(record + 12U, &word, 4U);
+        word = sized_crc(record, 3284U);
+        memcpy(record + 16U, &word, 4U);
+    }
     memset(media, 0xFF, 8192U);
     command_store_init();
     for (i = 0U; i < 4106U; ++i)
@@ -510,5 +520,77 @@ int test_entry(void)
     CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"bus\":1") != NULL);
     CHECK(command_library_json(json, sizeof(json), 120U) != 0U);
     CHECK(strstr(json, "\"used\":128") != NULL && strstr(json, "\"next\":null") != NULL);
+    /* v4 names survive reboot and preserve arbitrary printable UTF-8. */
+    memset(media, 0xFF, sizeof(media));
+    init_store();
+    {
+        const char named[] =
+            "bus=2 mode=0 hz=25000000 lsb=0 cs_high=0 format=hex\nlengths=2,0,0,0\n9F"
+            "\nnames=6,16,9,11\nRFIC03Проверка日本語RD / status";
+        const char i2c_named[] = "bus=1 hz=100000 addr=8 op=1 read=2 format=hex\nlengths=0,0,0,0\n"
+                                 "\nnames=6,0,0,0\nRead 2";
+        const char *bad_names[] = {"\nnames=1,0,0,0\n\001", "\nnames=2,0,0,0\n\xC0\xAF",
+                                   "\nnames=4,0,0,0\n\xF4\x90\x80\x80", "\nnames=2,0,0,0\nA",
+                                   "\nnames=33,0,0,0\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"};
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Named", 5U, named, sizeof(named) - 1U) ==
+              STORE_OK);
+        CHECK(finish_save());
+        init_store();
+        CHECK(command_library_load(0U) == STORE_OK);
+        CHECK(command_store_json(json, sizeof(json)) != 0U);
+        CHECK(strstr(json,
+                     "\"command_names\":[\"RFIC03\",\"Проверка\",\"日本語\",\"RD / status\"]") !=
+              NULL);
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Named", 5U, i2c_named,
+                                   sizeof(i2c_named) - 1U) == STORE_OK);
+        CHECK(finish_save());
+        init_store();
+        CHECK(command_library_load(64U) == STORE_OK);
+        CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "Read 2") != NULL);
+        before = writes;
+        for (i = 0U; i < sizeof(bad_names) / sizeof(bad_names[0]); ++i)
+        {
+            memcpy(maximum, a, sizeof(a) - 1U);
+            memcpy(maximum + sizeof(a) - 1U, bad_names[i], strlen(bad_names[i]));
+            CHECK(command_store_save(maximum, sizeof(a) - 1U + strlen(bad_names[i])) ==
+                  STORE_INVALID);
+        }
+        CHECK(writes == before);
+    }
+    {
+        const char *header =
+            "bus=2 mode=0 hz=25000000 lsb=0 cs_high=0 format=hex\nlengths=768,768,768,768\n";
+        const char *names = "\nnames=128,128,128,128\n";
+        size_t length = strlen(header);
+        memcpy(maximum, header, length);
+        for (i = 0U; i < 3072U; i += 3U)
+        {
+            memcpy(maximum + length + i, "A5 ", 3U);
+        }
+        length += 3072U;
+        memcpy(maximum + length, names, strlen(names));
+        length += strlen(names);
+        for (i = 0U; i < 512U; i += 4U)
+        {
+            memcpy(maximum + length + i, "\xF0\x9F\x98\x80", 4U);
+        }
+        length += 512U;
+        CHECK(command_library_save(0U, "Named", 5U, maximum, length) == STORE_OK);
+        CHECK(finish_save());
+        init_store();
+        CHECK(command_library_load(0U) == STORE_OK);
+        CHECK(command_store_json(json, sizeof(json)) != 0U &&
+              strstr(json, "\xF0\x9F\x98\x80") != NULL);
+        /* Interrupt a replacement: names and data must remain from the committed copy. */
+        CHECK(command_library_save(0U, "Named", 5U, a, sizeof(a) - 1U) == STORE_OK);
+        for (i = 0U; i < 7U; ++i)
+        {
+            command_store_poll();
+        }
+        init_store();
+        CHECK(command_library_load(0U) == STORE_OK);
+        CHECK(command_store_json(json, sizeof(json)) != 0U &&
+              strstr(json, "\xF0\x9F\x98\x80") != NULL);
+    }
     return 0;
 }

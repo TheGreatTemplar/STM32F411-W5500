@@ -33,8 +33,11 @@ typedef struct
     uint32_t address;
     uint32_t operation;
     uint32_t read_size;
+    uint32_t command_name_sizes[COMMAND_STORE_COUNT];
+    char command_names[COMMAND_STORE_COUNT][COMMAND_STORE_NAME_BYTES];
 } store_record_t;
 
+#define V3_BYTES offsetof(store_record_t, command_name_sizes)
 #define V2_BYTES offsetof(store_record_t, bus)
 
 #define LEGACY_BYTES offsetof(store_record_t, deleted)
@@ -102,11 +105,17 @@ static size_t record_bytes(const store_record_t *record)
 {
     return record->version == 1U   ? LEGACY_BYTES
            : record->version == 2U ? V2_BYTES
+           : record->version == 3U ? V3_BYTES
                                    : sizeof(*record);
 }
 
 static void normalize(store_record_t *record)
 {
+    if (record->version < 4U)
+    {
+        memset(record->command_name_sizes, 0, sizeof(record->command_name_sizes));
+        memset(record->command_names, 0, sizeof(record->command_names));
+    }
     if (record->version < 3U)
     {
         record->bus = 2U;
@@ -162,13 +171,17 @@ static bool write_enable(void)
     return flash_command(0x06U) && status(&value) && ((value & 3U) == 2U);
 }
 
-bool command_library_name_valid(const char *name, size_t size)
+static bool label_valid(const char *name, size_t size, bool filename)
 {
     size_t i = 0U;
     uint32_t count = 0U;
-    if (size == 0U || size > COMMAND_LIBRARY_NAME_BYTES || name[0] == ' ' ||
-        name[size - 1U] == ' ' || (size == 1U && name[0] == '.') ||
-        (size == 2U && name[0] == '.' && name[1] == '.'))
+    if (size == 0U)
+    {
+        return !filename;
+    }
+    if (size > COMMAND_STORE_NAME_BYTES ||
+        (filename && (name[0] == ' ' || name[size - 1U] == ' ' || (size == 1U && name[0] == '.') ||
+                      (size == 2U && name[0] == '.' && name[1] == '.'))))
     {
         return false;
     }
@@ -221,8 +234,8 @@ bool command_library_name_valid(const char *name, size_t size)
             code = (code << 6U) | (next & 63U);
         }
         if (code < minimum || code > 0x10FFFFU || (code >= 0xD800U && code <= 0xDFFFU) ||
-            code < 32U || (code >= 127U && code <= 159U) || code == '/' || code == '\\' ||
-            ++count > 32U)
+            code < 32U || (code >= 127U && code <= 159U) ||
+            (filename && (code == '/' || code == '\\')) || ++count > 32U)
         {
             return false;
         }
@@ -230,10 +243,12 @@ bool command_library_name_valid(const char *name, size_t size)
     return true;
 }
 
-static bool newer(uint32_t a, uint32_t b)
+bool command_library_name_valid(const char *name, size_t size)
 {
-    return a != b && (uint32_t)(a - b) < 0x80000000UL;
+    return label_valid(name, size, true);
 }
+
+static bool newer(uint32_t a, uint32_t b) { return a != b && (uint32_t)(a - b) < 0x80000000UL; }
 
 static uint32_t slot_address(uint32_t id, uint32_t copy)
 {
@@ -245,14 +260,14 @@ static bool valid_record(const store_record_t *record)
 {
     uint32_t i;
     spi_clock_plan_t plan;
-    if ((record->magic != STORE_MAGIC) || (record->version < 1U || record->version > 3U) ||
+    if ((record->magic != STORE_MAGIC) || (record->version < 1U || record->version > 4U) ||
         (record->commit != STORE_COMMIT) || (record->payload_size != record_bytes(record) - 24U) ||
         (record->crc != record_crc(record)) || (record->mode > 3U) || (record->lsb > 1U) ||
         (record->cs_high > 1U) || (record->ascii > 1U))
     {
         return false;
     }
-    if (record->version == 3U && record->bus == 1U)
+    if (record->version >= 3U && record->bus == 1U)
     {
         i2c_command_t command = {0};
         command.hz = record->hz;
@@ -266,7 +281,7 @@ static bool valid_record(const store_record_t *record)
             return false;
         }
     }
-    else if ((record->version == 3U && record->bus != 2U) || !spi_clock_plan(record->hz, &plan))
+    else if ((record->version >= 3U && record->bus != 2U) || !spi_clock_plan(record->hz, &plan))
     {
         return false;
     }
@@ -277,7 +292,9 @@ static bool valid_record(const store_record_t *record)
     }
     for (i = 0U; i < COMMAND_STORE_COUNT; ++i)
     {
-        if (record->lengths[i] > COMMAND_STORE_TEXT_MAX)
+        if (record->lengths[i] > COMMAND_STORE_TEXT_MAX ||
+            (record->version >= 4U &&
+             !label_valid(record->command_names[i], record->command_name_sizes[i], false)))
         {
             return false;
         }
@@ -536,6 +553,44 @@ static bool parse_snapshot(const char *body, size_t size)
         }
         offset += length;
     }
+    if (offset == size)
+    {
+        return true; /* Legacy clients omit names. */
+    }
+    if (size - offset < 7U || memcmp(body + offset, "\nnames=", 7U) != 0)
+    {
+        return false;
+    }
+    offset += 7U;
+    for (i = 0U; i < COMMAND_STORE_COUNT; ++i)
+    {
+        uint32_t length = 0U;
+        size_t digits = 0U;
+        while (offset < size && body[offset] >= '0' && body[offset] <= '9')
+        {
+            length = length * 10U + (uint32_t)(body[offset++] - '0');
+            if (length > COMMAND_STORE_NAME_BYTES)
+            {
+                return false;
+            }
+            ++digits;
+        }
+        if (digits == 0U || offset == size || body[offset++] != (i == 3U ? '\n' : ','))
+        {
+            return false;
+        }
+        candidate.command_name_sizes[i] = length;
+    }
+    for (i = 0U; i < COMMAND_STORE_COUNT; ++i)
+    {
+        const size_t length = candidate.command_name_sizes[i];
+        if (length > size - offset || !label_valid(body + offset, length, false))
+        {
+            return false;
+        }
+        memcpy(candidate.command_names[i], body + offset, length);
+        offset += length;
+    }
     return offset == size;
 }
 
@@ -555,7 +610,7 @@ static store_error_t available(void)
 static void begin_write(uint32_t id)
 {
     candidate.magic = STORE_MAGIC;
-    candidate.version = 3U;
+    candidate.version = 4U;
     candidate.sequence = generation + 1U;
     candidate.payload_size = sizeof(candidate) - 24U;
     candidate.commit = UINT32_MAX;
@@ -1065,6 +1120,15 @@ size_t command_store_json(char *json, size_t capacity)
             put_char(&writer, ',');
         }
         put_string(&writer, current.texts[i], current.lengths[i]);
+    }
+    put_text(&writer, "],\"command_names\":[");
+    for (i = 0U; i < COMMAND_STORE_COUNT; ++i)
+    {
+        if (i != 0U)
+        {
+            put_char(&writer, ',');
+        }
+        put_string(&writer, current.command_names[i], current.command_name_sizes[i]);
     }
     put_text(&writer, "]}");
     if (writer.ok == 0U || writer.used >= capacity)
