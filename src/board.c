@@ -42,15 +42,24 @@ static void output_mode(GPIO_TypeDef *port, uint32_t pin)
     port->PUPDR &= ~(3UL << (pin * 2U));
 }
 
+static void w5500_select(bool active)
+{
+    /* W5500 CS is PB0. PA15 is reserved for the future I2S3 word-select. */
+    GPIOB->BSRR = 1UL << (active ? 16U : 0U);
+}
+
 bool board_init(void)
 {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOBEN | RCC_AHB1ENR_GPIOCEN;
     (void)RCC->AHB1ENR;
     /* Set inactive network control levels before changing direction. */
-    GPIOA->BSRR = (1UL << 15U) | (1UL << 4U); /* W5500 / Flash CS */
+    GPIOA->BSRR = 1UL << 4U; /* Flash CS */
+    w5500_select(false);
     GPIOB->BSRR = 1UL << (2U + 16U);
     GPIOC->BSRR = 1UL << 13U; /* LED off, active low */
-    output_mode(GPIOA, 15U);
+    output_mode(GPIOB, 0U);
+    GPIOA->MODER &= ~(3UL << 30U); /* Release the former PA15 CS as a floating input. */
+    GPIOA->PUPDR &= ~(3UL << 30U);
     output_mode(GPIOA, 4U);
     output_mode(GPIOB, 2U); /* W5500 reset */
     output_mode(GPIOC, 13U);
@@ -145,7 +154,7 @@ bool board_spi_transfer(uint16_t address, uint8_t control, const uint8_t *tx, ui
     bool ok;
     uint32_t start;
     GPIOA->BSRR = 1UL << 4U; /* Flash must be deselected during Ethernet frames. */
-    GPIOA->BSRR = 1UL << 31U;
+    w5500_select(true);
     ok = spi_byte((uint8_t)(address >> 8U), &rx) && spi_byte((uint8_t)address, &rx) &&
          spi_byte(control, &rx);
     for (i = 0U; ok && (i < size); ++i)
@@ -161,7 +170,7 @@ bool board_spi_transfer(uint16_t address, uint8_t control, const uint8_t *tx, ui
     {
         ok = (uint32_t)(board_millis() - start) < 5U;
     }
-    GPIOA->BSRR = 1UL << 15U;
+    w5500_select(false);
     if (!ok)
     {
         /* Recover the peripheral; caller restarts the W5500 after an I/O error. */
@@ -179,7 +188,7 @@ bool board_flash_transfer(const uint8_t *prefix, size_t prefix_size, const uint8
     size_t i;
     bool ok = true;
     uint32_t start;
-    GPIOA->BSRR = 1UL << 15U;
+    w5500_select(false);
     GPIOA->BSRR = 1UL << 20U;
     for (i = 0U; ok && (i < prefix_size); ++i)
     {

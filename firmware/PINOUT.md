@@ -12,7 +12,7 @@
 | SCK | PA5 | SPI1 SCK, режим 0, 3 МГц |
 | MISO | PA6 | SPI1 MISO |
 | MOSI | PA7 | SPI1 MOSI |
-| CS / SCSn | PA15 | Active-low, HIGH между транзакциями |
+| CS / SCSn | PB0 | Active-low, HIGH между транзакциями |
 | RSTn | PB2 | Active-low; учитывать BOOT1 |
 | INTn | Не подключён | Опрос состояния в прошивке |
 | GND | GND | Общая земля |
@@ -62,8 +62,8 @@ Fast mode 400 кГц при постоянной APB1 48 МГц.
 | GND | GND | Общая земля |
 
 Для loopback соединить PA9 с PA10. RX DMA2 Stream2 channel4; TX DMA2 Stream7
-channel4. SPI2 не передаёт, пока USART включён: защита от смены APB2/BRR.
-I2S пока не назначена. [Тест USART](../documentation/USART_CONSOLE.md).
+channel4. USART1 и SPI2 работают независимо при постоянных частотах тактирования.
+PA15 освобождён под будущую I2S3; сейчас это вход без подтяжек. I2S ещё не включена. [Тест USART](../documentation/USART_CONSOLE.md).
 
 ## Внешняя Flash: W25Q64JV, 8 Мбайт
 
@@ -74,7 +74,7 @@ I2S пока не назначена. [Тест USART](../documentation/USART_CO
 | DO / MISO | PA6 | Общий SPI1 MISO |
 | DI / MOSI | PA7 | Общий SPI1 MOSI |
 
-SPI1 mode 0, 3 МГц. Перед обращением к Flash CS W5500 на PA15 снимается,
+SPI1 mode 0, 3 МГц. Перед обращением к Flash CS W5500 на PB0 снимается,
 перед обращением к W5500 снимается CS Flash. Для наборов зарезервирован последний 1 Мбайт:
 SPI 0x780000…0x7FFFFF и I2C 0x700000…0x77FFFF, по 64 набора; дополнительно 0x6FE000 и 0x6FF000 заняты системной конфигурацией (сеть и поправка RTC).
 Справка занимает 0x6EE000…0x6FDFFF (две копии по 32 КиБ).

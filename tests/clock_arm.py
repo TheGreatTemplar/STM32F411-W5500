@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build/test_deps'))
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
-from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0
+from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3
 
 root = Path(__file__).resolve().parents[1]
 
@@ -46,8 +46,12 @@ def fixture(fault=None):
     uc.hook_add(UC_HOOK_MEM_READ,ready,begin=0x40007004,end=0x40007007)
     uc.hook_add(UC_HOOK_CODE,progress)
     write(0x40023800,0x83)
-    def call(name):
+    def call(name, *args):
         uc.reg_write(UC_ARM_REG_SP,0x2001F000)
+        for register, value in zip([UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3], args):
+            uc.reg_write(register, value)
+        for index, value in enumerate(args[4:]):
+            write(0x2001F000 + index * 4, value)
         uc.reg_write(UC_ARM_REG_LR,0x10000001)
         uc.emu_start(symbols[name]|1,0x10000000,count=2000000)
         assert uc.reg_read(UC_ARM_REG_PC)==0x10000000,name
@@ -96,3 +100,53 @@ assert all(read(a)==0 for a in [0x4001100C,0x40011014,0x40013000,0x40003800,0x40
 print('Fixed clocks: HSE25/PLL96, APB1 48/APB2 12, SysTick/SPI1/ADC, warm boot, five startup faults and CSS reset passed')
 
 
+
+# Real board.c service-SPI GPIO contract, including error cleanup.
+uc,symbols,read,write,call=fixture()
+A, B, SPI1 = 0x40020000, 0x40020400, 0x40013000
+wire = []
+def gpio_model(machine,access,address,size,value,unused):
+    if address == B and value & 3 == 1:
+        assert read(B+0x14)&1, 'PB0 must be preloaded inactive before becoming output'
+    if address not in (A+0x18,B+0x18):
+        return
+    port = address-0x18
+    if port == A:
+        assert not value & ((1<<15)|(1<<31)), 'Former PA15 CS was still driven'
+        if value & (1<<20):
+            assert read(B+0x14)&1, 'W5500 selected during Flash transaction'
+    elif value & (1<<16):
+        assert read(A+0x14)&(1<<4), 'Flash selected during W5500 transaction'
+    write(port+0x14,(read(port+0x14)|(value&0xFFFF))&~(value>>16))
+def spi_byte_model(machine,access,address,size,value,unused):
+    ethernet = not (read(B+0x14)&1)
+    flash = not (read(A+0x14)&(1<<4))
+    assert ethernet != flash, 'Exactly one service SPI chip must be selected'
+    wire.append(('w5500' if ethernet else 'flash',value&255))
+uc.hook_add(UC_HOOK_MEM_WRITE,gpio_model,begin=A,end=B+0x1B)
+uc.hook_add(UC_HOOK_MEM_WRITE,spi_byte_model,begin=SPI1+12,end=SPI1+15)
+write(A,1<<30)  # Prior PA15 output must be explicitly released.
+write(A+0x0C,1<<30)
+write(B+4,1)  # PB0 must become push-pull with no pulls.
+write(B+0x0C,1)
+assert call('board_init')==1
+assert read(B)&3==1 and not read(B+4)&1 and not read(B+0x0C)&3
+assert read(A)&(3<<30)==0 and read(A+0x0C)&(3<<30)==0
+assert read(B+0x14)&1 and read(A+0x14)&(1<<4)
+base_cr1=read(SPI1)
+tx,rx,prefix=0x2001C000,0x2001C100,0x2001C200
+uc.mem_write(tx,bytes.fromhex('91 82 73'))
+uc.mem_write(prefix,bytes.fromhex('03 6E E0 00'))
+for name,args,expected in [
+        ('board_spi_transfer',(0x1234,4,tx,rx,3),bytes.fromhex('12 34 04 91 82 73')),
+        ('board_flash_transfer',(prefix,4,0,rx,3),bytes.fromhex('03 6E E0 00 00 00 00'))]:
+    for flags,success in [(3,True),(0,False),(0x83,False)]:
+        wire.clear()
+        write(SPI1+8,flags)
+        assert call(name,*args)==success,(name,flags)
+        selected='w5500' if name=='board_spi_transfer' else 'flash'
+        assert all(chip==selected for chip,value in wire)
+        assert bytes(value for chip,value in wire)==(b'' if flags==0 else expected)
+        assert read(B+0x14)&1 and read(A+0x14)&(1<<4), 'CS was not released'
+        assert read(SPI1)==base_cr1
+print('Service SPI1: W5500 PB0 preload/push-pull, PA15 released, exclusive CS, byte order and timeout/BSY cleanup passed')

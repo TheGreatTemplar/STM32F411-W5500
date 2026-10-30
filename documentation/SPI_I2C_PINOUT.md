@@ -35,7 +35,7 @@ I2C1: 7-битный адрес, 100 или 400 кГц при APB1 48 МГц.
 | SCK | PA5 | W5500 SCK и W25Q64JV CLK |
 | MISO | PA6 | W5500 MISO и W25Q64JV DO |
 | MOSI | PA7 | W5500 MOSI и W25Q64JV DI |
-| CS W5500 | PA15 | W5500 SCSn, active-low |
+| CS W5500 | PB0 | W5500 SCSn, active-low |
 | CS Flash | PA4 | W25Q64JV /CS, active-low |
 | RESET W5500 | PB2 | W5500 RSTn, active-low; учитывать BOOT1 |
 
