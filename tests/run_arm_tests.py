@@ -17,7 +17,7 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_AR
 def load_image(path):
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     uc.mem_map(0x08000000, 0x80000)
-    uc.mem_map(0x20000000, 0x200000 if path.name == "store_test.axf" else (0x80000 if path.name == "http_test.axf" else 0x20000))
+    uc.mem_map(0x20000000, 0x200000 if path.name == "store_test.axf" else (0x100000 if path.name == "http_test.axf" else 0x20000))
     uc.mem_map(0x10000000, 0x1000)
     with path.open("rb") as source:
         elf = ELFFile(source)
@@ -26,7 +26,7 @@ def load_image(path):
                 uc.mem_write(segment["p_vaddr"], segment.data())
         symbols = {symbol.name: symbol["st_value"]
                    for symbol in elf.get_section_by_name(".symtab").iter_symbols()}
-    uc.reg_write(UC_ARM_REG_SP, 0x201FF000 if path.name == "store_test.axf" else (0x2007F000 if path.name == "http_test.axf" else 0x2001F000))
+    uc.reg_write(UC_ARM_REG_SP, 0x201FF000 if path.name == "store_test.axf" else (0x200FF000 if path.name == "http_test.axf" else 0x2001F000))
     uc.reg_write(UC_ARM_REG_LR, 0x10000001)
     return uc, symbols
 
@@ -297,6 +297,7 @@ wire = bytes(uc.mem_read(symbols['captured_page'], size))
 headers, separator, compressed = wire.partition(b'\r\n\r\n')
 assert separator and b'Content-Encoding: gzip\r\n' in headers + b'\r\n'
 assert gzip.decompress(compressed) == (root / 'src/web/index.html').read_bytes()
+assert b"img-src 'self' data:" in wire.split(b'\r\n\r\n', 1)[0]
 (root / 'build/http_page_response.bin').write_bytes(wire)
 print('HTTP gzip: actual ARM response decompresses byte-for-byte to source HTML')
 print("HTTP integration: four clients, stalled connection isolation, ADC/LED/SPI and response framing passed")

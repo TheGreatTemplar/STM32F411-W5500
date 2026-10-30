@@ -65,7 +65,7 @@ static bool response(http_client_t *client, unsigned int status, const char *rea
                  "Connection: close\r\nCache-Control: no-store\r\n"
                  "X-Content-Type-Options: nosniff\r\n"
                  "Content-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; "
-                 "style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'\r\n"
+                 "style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'\r\n"
                  "%s\r\n",
                  status, reason, type, (unsigned long)size, extra_headers);
     if ((count <= 0) || ((size_t)count >= sizeof(client->header)))

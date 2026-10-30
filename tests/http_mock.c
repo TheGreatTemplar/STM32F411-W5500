@@ -51,7 +51,7 @@ static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
 static char output[262144];
-char captured_page[65536];
+char captured_page[131072];
 uint32_t captured_page_size;
 static size_t output_size;
 static bool fail_send;

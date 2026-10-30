@@ -5,6 +5,7 @@ import json
 import re
 import zlib
 import gzip
+import base64
 
 root = Path(__file__).resolve().parents[1]
 macros = dict(re.findall(r'#define (FW_\w+) "([^"]*)"',
@@ -27,6 +28,16 @@ archive = embedded[:-1]
 assert archive[:3] == b'\x1f\x8b\x08'
 assert archive[4:8] == bytes(4)  # Reproducible build: no generation timestamp.
 assert gzip.decompress(archive) == html
+# Both browser images must be self-contained PNGs, not nested SVG resources.
+for pattern, asset in [
+        (rb'<link rel="icon"[^>]+href="data:image/png;base64,([^"]+)"', 'favicon-32.png'),
+        (rb'<img id="brand-logo"[^>]+src="data:image/png;base64,([^"]+)"', 'brand-logo.png')]:
+    match = re.search(pattern, html)
+    assert match, asset
+    png = base64.b64decode(match[1], validate=True)
+    assert png.startswith(b'\x89PNG\r\n\x1a\n')
+    assert png == (root / 'src/web' / asset).read_bytes()
+
 assert int.from_bytes(archive[-8:-4], 'little') == int(macros['FW_WEB_CRC32'], 16)
 assert int.from_bytes(archive[-4:], 'little') == len(html)
 version = json.loads((root / 'firmware/version.json').read_text(encoding='utf-8'))
