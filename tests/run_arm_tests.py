@@ -144,6 +144,32 @@ for request, route in requests:
         assert call(uc, symbols["http_parse"]) == 0, (request, length)
         count += 1
 print(f"HTTP parser: {count} cases passed (including every fragmented prefix)")
+encoding_cases = [
+    ('', True), ('Accept-Encoding: gzip\r\n', True),
+    ('Accept-Encoding: br, gzip, deflate\r\n', True),
+    ('aCcEpT-EnCoDiNg: GZip ; q=0.100\r\n', True),
+    ('Accept-Encoding: gzip;q=1.000\r\n', True),
+    ('Accept-Encoding: gzip;q=0.001\r\n', True),
+    ('Accept-Encoding: *;q=0.5\r\n', True),
+    ('Accept-Encoding: gzip;q=1, *;q=0\r\n', True),
+    ('Accept-Encoding: deflate\r\nAccept-Encoding: gzip\r\n', True),
+    ('Accept-Encoding: identity\r\n', False), ('Accept-Encoding:\r\n', False),
+    ('Accept-Encoding: gzip;q=0\r\n', False),
+    ('Accept-Encoding: gzip;q=0.000\r\n', False),
+    ('Accept-Encoding: gzip;q=0, *;q=1\r\n', False),
+    ('Accept-Encoding: gzip;q=1.001\r\n', False),
+    ('Accept-Encoding: gzip;q=0.0001\r\n', False),
+    ('Accept-Encoding: gzip;q=x\r\n', False),
+    ('Accept-Encoding: gzip2\r\n', False),
+    ('Accept-Encoding: gzip\r\nAccept-Encoding: gzip;q=0\r\n', False),
+]
+for headers, expected in encoding_cases:
+    request = ('GET / HTTP/1.1\r\n' + headers + '\r\n').encode()
+    uc.mem_write(0x20010000, request)
+    uc.reg_write(UC_ARM_REG_R0, 0x20010000)
+    uc.reg_write(UC_ARM_REG_R1, len(request))
+    assert bool(call(uc, symbols['http_accepts_gzip'])) == expected, headers
+print('HTTP gzip: encoding negotiation, q values, wildcard and explicit refusal passed')
 
 def parse_spi(body):
     uc.mem_write(0x20010000, body or b"\0")
@@ -264,6 +290,14 @@ print("W5500 mock: four sockets, static config, RX/TX ring wrap, nonblocking sen
 uc, symbols = load_image(root / "build/http_test.axf")
 result = call(uc, symbols["test_entry"])
 assert result == 0, f"HTTP integration mock failed at C source line {result}"
+import gzip
+size = int.from_bytes(uc.mem_read(symbols['captured_page_size'], 4), 'little')
+wire = bytes(uc.mem_read(symbols['captured_page'], size))
+headers, separator, compressed = wire.partition(b'\r\n\r\n')
+assert separator and b'Content-Encoding: gzip\r\n' in headers + b'\r\n'
+assert gzip.decompress(compressed) == (root / 'src/web/index.html').read_bytes()
+(root / 'build/http_page_response.bin').write_bytes(wire)
+print('HTTP gzip: actual ARM response decompresses byte-for-byte to source HTML')
 print("HTTP integration: four clients, stalled connection isolation, ADC/LED/SPI and response framing passed")
 
 uc, symbols = load_image(root / "build/store_test.axf")

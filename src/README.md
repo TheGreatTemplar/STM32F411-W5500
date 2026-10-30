@@ -15,7 +15,7 @@
 | `main.c` | Измерения, сеть и повторная инициализация |
 | `config.h` | IP, порт, MAC, интервалы и опорное напряжение |
 | `web/index.html` | Исходник страницы |
-| `web_page.h` | Встроенные UTF-8 байты страницы, генерируются скриптом |
+| `web_page.h` | Встроенный gzip страницы, генерируется скриптом; распаковка в браузере |
 
 USART1 реализован в `usart_console.c`: PA9/PA10 AF7, RX DMA2 Stream2 circular,
 TX DMA2 Stream7, оба channel4. Векторы USART1 и DMA2 Stream2 подключены в startup.

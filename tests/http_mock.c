@@ -51,6 +51,8 @@ static size_t input_size;
 static size_t input_offset;
 static size_t fragment_size;
 static char output[262144];
+char captured_page[65536];
+uint32_t captured_page_size;
 static size_t output_size;
 static bool fail_send;
 static uint32_t link_speed_mbps;
@@ -467,8 +469,17 @@ int test_entry(void)
 
     prepare("GET / HTTP/1.1\r\n\r\n");
     pump(&adc);
-    CHECK(strstr(output, "<!doctype html>") != NULL);
-    CHECK(strstr(output, "fetch('/api/adc'") != NULL);
+    CHECK(strstr(output, "Content-Encoding: gzip\r\n") != NULL);
+    CHECK(strstr(output, "Vary: Accept-Encoding\r\n") != NULL);
+    CHECK(memcmp(strstr(output, "\r\n\r\n") + 4U, "\x1f\x8b\x08", 3U) == 0);
+    CHECK(framing_ok());
+    CHECK(output_size < sizeof(captured_page));
+    memcpy(captured_page, output, output_size);
+    captured_page_size = (uint32_t)output_size;
+    prepare("GET / HTTP/1.1\r\nAccept-Encoding: identity\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "406 Not Acceptable") != NULL);
+    CHECK(strstr(output, "Content-Encoding:") == NULL);
     CHECK(framing_ok());
 
     prepare("POST / HTTP/1.1\r\n\r\n");

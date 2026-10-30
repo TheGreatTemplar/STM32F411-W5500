@@ -43,6 +43,7 @@ typedef struct
 } adc_snapshot_t;
 
 http_route_t http_parse(const char *request, size_t size);
+bool http_accepts_gzip(const char *request, size_t size);
 void http_reset(void);
 void http_poll(const adc_snapshot_t *adc);
 

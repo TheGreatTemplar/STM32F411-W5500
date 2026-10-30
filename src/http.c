@@ -659,8 +659,15 @@ static bool dispatch(http_client_t *client, http_route_t route, const adc_snapsh
     case HTTP_SET_RTC:
         return rtc_response(client, true);
     case HTTP_PAGE:
+        if (!http_accepts_gzip(client->request, client->used))
+        {
+            const char *message = "This page requires gzip support.\n";
+            return response(client, 406U, "Not Acceptable", "text/plain; charset=utf-8", message,
+                            strlen(message), "Vary: Accept-Encoding\r\n");
+        }
         return response(client, 200U, "OK", "text/html; charset=utf-8", web_page,
-                        sizeof(web_page) - 1U, "");
+                        sizeof(web_page) - 1U,
+                        "Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n");
     case HTTP_ADC:
         return adc_response(client, adc);
     case HTTP_DIAGNOSTICS:

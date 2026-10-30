@@ -24,6 +24,121 @@ static bool header_equals(const char *text, size_t size, const char *expected)
     return true;
 }
 
+static bool encoding_quality(const char *text, size_t size)
+{
+    size_t i = 0U;
+    bool nonzero;
+    while (i < size && (text[i] == ' ' || text[i] == '\t'))
+    {
+        ++i;
+    }
+    if (i == size)
+    {
+        return true; /* No quality parameter. */
+    }
+    if (text[i++] != ';')
+    {
+        return false;
+    }
+    while (i < size && (text[i] == ' ' || text[i] == '\t'))
+    {
+        ++i;
+    }
+    if (i + 2U >= size || (text[i] != 'q' && text[i] != 'Q') || text[i + 1U] != '=')
+    {
+        return false;
+    }
+    i += 2U;
+    if (text[i] != '0' && text[i] != '1')
+    {
+        return false;
+    }
+    nonzero = text[i++] == '1';
+    if (i < size && text[i] == '.')
+    {
+        const bool one = nonzero;
+        uint32_t digits = 0U;
+        ++i;
+        while (i < size && text[i] >= '0' && text[i] <= '9')
+        {
+            const char digit = text[i++];
+            if (++digits > 3U || (one && digit != '0'))
+            {
+                return false;
+            }
+            nonzero = nonzero || digit != '0';
+        }
+    }
+    while (i < size && (text[i] == ' ' || text[i] == '\t'))
+    {
+        ++i;
+    }
+    return i == size && nonzero;
+}
+
+bool http_accepts_gzip(const char *request, size_t size)
+{
+    size_t start = 0U;
+    bool seen = false;
+    int gzip = -1;
+    int wildcard = -1;
+    while (start + 1U < size)
+    {
+        size_t end = start;
+        const char *colon;
+        while (end + 1U < size && !(request[end] == '\r' && request[end + 1U] == '\n'))
+        {
+            ++end;
+        }
+        if (end + 1U >= size || end == start)
+        {
+            break;
+        }
+        colon = memchr(request + start, ':', end - start);
+        if (colon != NULL &&
+            header_equals(request + start, (size_t)(colon - (request + start)), "accept-encoding"))
+        {
+            size_t p = (size_t)(colon - request) + 1U;
+            seen = true;
+            while (p < end)
+            {
+                size_t token;
+                size_t token_end;
+                size_t stop;
+                int allowed;
+                while (p < end && (request[p] == ' ' || request[p] == '\t' || request[p] == ','))
+                {
+                    ++p;
+                }
+                token = p;
+                while (p < end && request[p] != ',' && request[p] != ';' && request[p] != ' ' &&
+                       request[p] != '\t')
+                {
+                    ++p;
+                }
+                token_end = p;
+                stop = p;
+                while (stop < end && request[stop] != ',')
+                {
+                    ++stop;
+                }
+                allowed = encoding_quality(request + p, stop - p) ? 1 : 0;
+                if (header_equals(request + token, token_end - token, "gzip"))
+                {
+                    gzip = gzip == 0 ? 0 : allowed;
+                }
+                else if (header_equals(request + token, token_end - token, "*"))
+                {
+                    wildcard = wildcard == 0 ? 0 : allowed;
+                }
+                p = stop < end ? stop + 1U : end;
+            }
+        }
+        start = end + 2U;
+    }
+    return !seen || (gzip >= 0 ? gzip == 1 : wildcard == 1);
+}
+
 static bool command_headers_valid(const char *request, size_t start, size_t end, size_t *body_size)
 {
     bool control = false;
