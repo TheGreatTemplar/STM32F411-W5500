@@ -116,11 +116,11 @@ class DmaModel:
 
 
 def run(uc, symbols, call):
-    for length, hz, fault in [(1, 1000000, None), (11, 10000000, None),
-                              (11, 20000000, None), (11, 22000000, None),
-                              (11, 24000000, None), (11, 25000000, None),
-                              (256, 25000000, None),
-                              (256, 62500, None)] + [(11, 10000000, f) for f in
+    for length, hz, fault in [(1, 750000, None), (11, 12000000, None),
+                              (11, 24000000, None), (11, 6000000, None),
+                              (11, 24000000, None), (11, 24000000, None),
+                              (256, 24000000, None),
+                              (256, 187500, None)] + [(11, 12000000, f) for f in
                               ('stall', 'rx_stall', 'tx_stall', 'busy', 'rx_te', 'rx_dme', 'rx_fe',
                                'tx_te', 'tx_dme', 'tx_fe', 'ovr', 'modf', 'stop', 'prestop')]:
         uc.mem_write(DMA, bytes(0x100))
@@ -149,7 +149,7 @@ def run(uc, symbols, call):
         assert not model.get(RX) & 1 and not model.get(TX) & 1
         assert model.get(SPI + 4) == 0
         assert model.get(0x40020418) == 1 << 12
-        assert model.get(symbols['SystemCoreClock']) == 16000000
+        assert model.get(symbols['SystemCoreClock']) == 96000000
         if fault is None:
             assert bytes(uc.mem_read(0x20018400, length)) == bytes(v ^ 0xA5 for v in payload)
         if fault in ('stop', 'prestop'):

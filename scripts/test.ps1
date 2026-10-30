@@ -63,6 +63,11 @@ try
     {
         throw 'Build identity verification failed'
     }
+    & $Python tests/clock_arm.py
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'Clock tests failed'
+    }
     & $Python tests/usart_arm.py
     if ($LASTEXITCODE -ne 0)
     {

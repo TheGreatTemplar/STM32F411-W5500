@@ -17,7 +17,13 @@ int main(void)
     uint32_t settings_sequence;
     bool settings_busy;
     store_error_t settings_error;
-    board_init();
+    if (!board_init())
+    {
+        for (;;)
+        {
+            __WFI(); /* Blue LED on; inspect board_clock_error() via SWD. */
+        }
+    }
     usart_init();
     command_store_init();
     command_system_get(&settings, &settings_sequence, &settings_busy, &settings_error);

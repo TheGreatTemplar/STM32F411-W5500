@@ -19,7 +19,7 @@ __heap_limit
 __Vectors
                 DCD     __initial_sp
                 DCD     Reset_Handler
-                DCD     Default_Handler     ; NMI
+                DCD     NMI_Handler
                 DCD     Default_Handler     ; HardFault
                 DCD     Default_Handler     ; MemManage
                 DCD     Default_Handler     ; BusFault
@@ -51,6 +51,7 @@ __Vectors_Size  EQU     __Vectors_End - __Vectors
 Reset_Handler   PROC
                 EXPORT  Reset_Handler
                 IMPORT  SystemInit
+                IMPORT  NMI_Handler
                 IMPORT  __main
                 IMPORT  SysTick_Handler
                 IMPORT  USART1_IRQHandler

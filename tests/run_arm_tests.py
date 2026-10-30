@@ -73,7 +73,7 @@ for suffix in [b'', b'x', b'\n']:
     assert call(uc, symbols['bench_settings_parse']) == (not suffix)
 print('System routes: fragmented protected POST, strict settings parser and trailing-data rejection passed')
 
-spi_body = b"bus=2 mode=0 hz=1000000 lsb=0 cs_high=0 format=hex\n9F 00 00 00"
+spi_body = b"bus=2 mode=0 hz=750000 lsb=0 cs_high=0 format=hex\n9F 00 00 00"
 spi_request = (b"POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: " +
                str(len(spi_body)).encode() + b"\r\n\r\n" + spi_body)
 requests = [
@@ -196,7 +196,7 @@ def model_clock(machine, address, size, data):
 from spi_dma_tests import DmaModel
 spi_cases = 0
 for mode in range(4):
-    for hz in [62500, 125000, 250000, 500000, 1000000, *range(2000000, 24000001, 2000000), 25000000]:
+    for hz in [187500, 375000, 750000, 1500000, 3000000, 6000000, 12000000, 24000000]:
         body = f"bus=2 mode={mode} hz={hz} lsb=1 cs_high=0 format=hex\n9F 00 aA FF".encode()
         ok, command = parse_spi(body)
         assert ok and struct.unpack_from('<5I', command) == (hz, mode, 1, 0, 4)
@@ -214,11 +214,14 @@ for mode in range(4):
             uc.hook_add(UC_HOOK_CODE, model_clock)
             uc.mem_map(0x40026000, 0x1000)
             dma_model = DmaModel(uc)
+            uc.mem_write(symbols['SystemCoreClock'], (96000000).to_bytes(4,'little'))
+            uc.mem_write(0x40023800, (0x030B0003).to_bytes(4,'little'))
+            uc.mem_write(0x40023808, (0xD00A).to_bytes(4,'little'))
         uc.reg_write(UC_ARM_REG_R0, hz)
         uc.reg_write(UC_ARM_REG_R1, 0x20018800)
         assert call(uc, symbols['spi_clock_plan']) == 1
         system_hz, pclk1_hz, divisor = struct.unpack('<3I', bytes(uc.mem_read(0x20018800, 12)))
-        assert system_hz <= 100000000 and pclk1_hz <= 50000000
+        assert system_hz == 96000000 and pclk1_hz == 48000000
         assert pclk1_hz // (2 << divisor) == hz
         uc.mem_write(0x40012304, (0x00400000).to_bytes(4, 'little'))
         uc.mem_write(0x40003808, (3).to_bytes(4, 'little'))  # RXNE | TXE
@@ -231,28 +234,26 @@ for mode in range(4):
         cr1 = int.from_bytes(uc.mem_read(0x40003800, 4), 'little')
         assert cr1 & 3 == mode and cr1 & 128 and cr1 & 64
         assert pclk1_hz // (2 << ((cr1 >> 3) & 7)) == hz
-        if system_hz != 16000000:
-            assert int.from_bytes(uc.mem_read(symbols['SystemCoreClock'], 4), 'little') == 16000000
-            assert int.from_bytes(uc.mem_read(0xE000E014, 4), 'little') == 15999
-            assert int.from_bytes(uc.mem_read(0x40023808, 4), 'little') == 0
-            assert int.from_bytes(uc.mem_read(0x40012304, 4), 'little') == 0x00400000
+        assert int.from_bytes(uc.mem_read(symbols['SystemCoreClock'], 4), 'little') == 96000000
+        assert int.from_bytes(uc.mem_read(0x40023808, 4), 'little') == 0xD00A
+        assert int.from_bytes(uc.mem_read(0x40012304, 4), 'little') == 0x00400000
         assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 12
         assert int.from_bytes(uc.mem_read(0x40013000, 4), 'little') == 0x035C
 
-base = b"bus=2 mode=0 hz=1000000 lsb=0 cs_high=0 format=hex\n"
+base = b"bus=2 mode=0 hz=750000 lsb=0 cs_high=0 format=hex\n"
 for invalid_hz in [0, 23000000, 25000001, 26000000, 50000000]:
-    assert parse_spi(base.replace(b'hz=1000000', f'hz={invalid_hz}'.encode()) + b'00')[0] == 0
+    assert parse_spi(base.replace(b'hz=750000', f'hz={invalid_hz}'.encode()) + b'00')[0] == 0
 assert parse_spi(base + b'00 ' * 256)[0] == 1
 assert parse_spi(base + b'00 ' * 257)[0] == 0
 for bad in [b'', base, base + b'9', base + b'GG',
             base.replace(b'bus=2', b'bus=1') + b'00',
             base.replace(b'mode=0', b'mode=4') + b'00',
-            base.replace(b'hz=1000000', b'hz=333333') + b'00',
+            base.replace(b'hz=750000', b'hz=333333') + b'00',
             base.replace(b'lsb=0', b'lsb=2') + b'00',
             base.replace(b'cs_high=0', b'cs_high=9') + b'00',
             base.replace(b'bus=2', b'bus=2 bus=2') + b'00',
             base.replace(b'bus=2', b'hz=2') + b'00',
-            base.replace(b'hz=1000000', b'hz=99999999999999999999999') + b'00']:
+            base.replace(b'hz=750000', b'hz=99999999999999999999999') + b'00']:
     assert parse_spi(bad)[0] == 0, bad
 ascii_base = base.replace(b'format=hex', b'format=ascii')
 assert parse_spi(ascii_base + b'*IDN?\n')[1][20:26] == b'*IDN?\n'
@@ -276,7 +277,7 @@ def advance_tick(machine, address, size, data):
 
 
 dma_model.close()
-print('SPI console: 72 mode/rate configurations through 25 MHz, PLL switching/restoration, register loopback, limits and invalid input passed')
+print('SPI console: 32 mode/rate configurations through 24 MHz, fixed clocks, register loopback, limits and invalid input passed')
 from i2c_register_tests import run as run_i2c_register_tests
 from spi_config_tests import run as run_spi_config_tests
 run_spi_config_tests(uc, symbols, call)

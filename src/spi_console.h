@@ -28,6 +28,8 @@ typedef struct
 bool console_bytes_parse(const char *text, size_t size, bool ascii, uint8_t bytes[256],
                          size_t *count, bool allow_empty);
 bool spi_clock_plan(uint32_t hz, spi_clock_plan_t *plan);
+bool spi_stored_hz_valid(uint32_t hz);
+bool spi_stored_command_parse(const char *text, size_t size, spi_command_t *command);
 bool spi_command_parse(const char *text, size_t size, spi_command_t *command);
 bool board_spi_console(const spi_command_t *command, uint8_t rx[SPI_CONSOLE_MAX_BYTES]);
 bool board_spi_console_config(const spi_command_t *command);

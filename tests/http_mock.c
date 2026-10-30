@@ -594,7 +594,7 @@ int test_entry(void)
     CHECK(framing_ok());
     prepare("POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: 70\r\n\r\n");
     {
-        const char *body = "bus=2 mode=3 hz=1000000 lsb=1 cs_high=0 format=hex\n9F 00 AA FF";
+        const char *body = "bus=2 mode=3 hz=750000 lsb=1 cs_high=0 format=hex\n9F 00 AA FF";
         const int length = snprintf(
             input, sizeof(input),
             "POST /api/spi HTTP/1.1\r\nX-Device-Control: 1\r\nContent-Length: %lu\r\n\r\n%s",
@@ -732,7 +732,7 @@ int test_entry(void)
     }
 
     {
-        const char body[] = "bus=2 mode=2 hz=1000000 lsb=0 cs_high=0 format=hex\n";
+        const char body[] = "bus=2 mode=2 hz=750000 lsb=0 cs_high=0 format=hex\n";
         const uint32_t calls = spi_calls;
         const uint32_t configs = config_calls;
         prepare("GET / HTTP/1.1\r\n\r\n");

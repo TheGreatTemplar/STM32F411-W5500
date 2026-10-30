@@ -416,6 +416,16 @@
               <FilePath>.\src\board.c</FilePath>
             </File>
             <File>
+              <FileName>clock.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\clock.c</FilePath>
+            </File>
+            <File>
+              <FileName>clock.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\clock.h</FilePath>
+            </File>
+            <File>
               <FileName>usart_console.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\src\usart_console.c</FilePath>

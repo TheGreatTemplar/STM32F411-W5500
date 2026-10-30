@@ -1,5 +1,6 @@
 #include "command_store.h"
 #include "board.h"
+#include "clock.h"
 #include "i2c_console.h"
 #include "spi_console.h"
 #include <stdio.h>
@@ -299,7 +300,6 @@ static uint32_t slot_address(uint32_t id, uint32_t copy)
 static bool valid_record(const store_record_t *record)
 {
     uint32_t i;
-    spi_clock_plan_t plan;
     if ((record->magic != STORE_MAGIC) || (record->version < 1U || record->version > 5U) ||
         (record->commit != STORE_COMMIT) || (record->payload_size != record_bytes(record) - 24U) ||
         (record->crc != record_crc(record)) || (record->mode > 3U) || (record->lsb > 1U) ||
@@ -321,7 +321,7 @@ static bool valid_record(const store_record_t *record)
             return false;
         }
     }
-    else if ((record->version >= 3U && record->bus != 2U) || !spi_clock_plan(record->hz, &plan))
+    else if ((record->version >= 3U && record->bus != 2U) || !spi_stored_hz_valid(record->hz))
     {
         return false;
     }
@@ -354,7 +354,7 @@ static bool supported_flash(void)
 static void defaults(void)
 {
     memset(&current, 0, sizeof(current));
-    current.hz = 1000000U;
+    current.hz = BOARD_SPI_DEFAULT_HZ;
     current.bus = 2U;
     selected_id = COMMAND_LIBRARY_NEW;
     has_saved = false;
@@ -593,7 +593,7 @@ static bool parse_snapshot(const char *body, size_t size)
     }
     else
     {
-        if (!spi_command_parse(command_text, header + 3U, &command))
+        if (!spi_stored_command_parse(command_text, header + 3U, &command))
         {
             return false;
         }
@@ -641,7 +641,7 @@ static bool parse_snapshot(const char *body, size_t size)
         {
             memcpy(command_text + header + 1U, body + offset, length);
             if (is_i2c ? !i2c_command_parse(command_text, header + 1U + length, &i2c)
-                       : !spi_command_parse(command_text, header + 1U + length, &command))
+                       : !spi_stored_command_parse(command_text, header + 1U + length, &command))
             {
                 return false;
             }

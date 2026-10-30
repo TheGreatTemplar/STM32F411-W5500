@@ -3,7 +3,7 @@
 | Файл | Назначение |
 | --- | --- |
 | `startup_stm32f411.s` | Таблица векторов и вход в C runtime Arm |
-| `board.c` | HSI/PLL, SysTick, GPIO, SPI1/SPI2, два канала ADC1 |
+| `board.c` | SysTick, GPIO, SPI1/SPI2, два канала ADC1 |
 | `command_store.c` | W25Q64JV: 64 + 64 набора SPI/I2C, перенос старых I2C, CRC32, фоновая запись |
 | `rtc.c` | RTC от LSE, календарь, ручная установка, резервные регистры |
 | `w5500.c` | Регистры W5500, статическая сеть, TCP-сокеты 0–3, пошаговая отправка |
@@ -19,8 +19,11 @@
 
 USART1 реализован в `usart_console.c`: PA9/PA10 AF7, RX DMA2 Stream2 circular,
 TX DMA2 Stream7, оба channel4. Векторы USART1 и DMA2 Stream2 подключены в startup.
-USART блокирует передачу SPI2, пока включён, чтобы сохранить APB2/BRR.
+USART и SPI2 работают при постоянных APB2/APB1; блокировки между ними нет.
 
 Используются C99, CMSIS и регистры MCU. Включены SysTick, USART1 и DMA2 Stream2;
 остальные IRQ не включаются, их векторы указывают на Default_Handler. При добавлении IRQ
 потребуется заменить соответствующие векторы в startup.
+
+`clock.c` — HSE 25 МГц, PLL 96 МГц, постоянные APB1/APB2, CSS/NMI.
+[План частот](../documentation/CLOCKS.md).

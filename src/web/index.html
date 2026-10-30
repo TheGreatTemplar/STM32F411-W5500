@@ -130,6 +130,7 @@
         #mcu-diagnostics #led-message { display: block; height: 21px; }
         .console-state { display: flex; align-items: center; gap: 10px; height: 20px; min-width: 0; margin: 0; white-space: nowrap; }
         .console-state p { margin: 0; }
+        .console-state .input-error { padding: 0 6px; }
         #spi-queue { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 620px) { .console-toolbar { height: 82px; } }
         #spi-config-status { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -316,13 +317,13 @@
             <section id="uart-console" hidden aria-label="Тест USART">
                 <div class="spi-title"><h2>USART1 · тест</h2><p class="hint">PA9 TX · PA10 RX · логика 3,3 В · общий GND</p></div>
                 <div class="uart-settings">
-                    <label>Скорость, бод<select id="uart-baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option selected>115200</option><option>230400</option><option>460800</option><option>500000</option><option>1000000</option></select></label>
+                    <label>Скорость, бод<select id="uart-baud"><option>300</option><option>600</option><option>1200</option><option>2400</option><option>4800</option><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option selected>115200</option><option>230400</option><option>460800</option><option>500000</option><option>921600</option><option>1000000</option></select></label>
                     <label>Биты данных<select id="uart-bits"><option selected>8</option><option>7</option></select></label>
                     <label>Чётность<select id="uart-parity"><option value="0">None</option><option value="1">Odd</option><option value="2">Even</option></select></label>
                     <label>Стоп-биты<select id="uart-stop"><option>1</option><option>2</option></select></label>
                     <button type="button" id="uart-start">Включить / применить</button><button type="button" id="uart-off">Отключить USART</button>
                 </div>
-                <p class="hint">Пока USART включён, передача SPI заблокирована. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.</p>
+                <p class="hint">USART, SPI и I2C используют постоянные частоты и могут работать без отключения USART. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.</p>
                 <p id="uart-state" role="status">Ожидание данных…</p>
                 <div class="uart-settings"><label>Формат<select id="uart-format"><option value="0">HEX</option><option value="1">ASCII</option></select></label><label id="uart-eol-label">Окончание строки<select id="uart-eol"><option value="0">None</option><option value="1">CR</option><option value="2">LF</option><option value="3">CRLF</option></select></label><button type="button" id="uart-clear">Очистить журнал</button></div>
                 <div class="result-title"><span>TX · до 256 байт</span><span class="hint">Передача через DMA</span></div>
@@ -351,7 +352,7 @@
                 </fieldset>
                 <fieldset class="i2c-only i2c-options" hidden><legend>Адрес I2C · HEX</legend><label>0x<input id="i2c-address" value="50" maxlength="2" spellcheck="false" aria-label="7-битный адрес I2C"></label><span class="hint">7 бит · 08–77</span></fieldset>
                 <fieldset class="i2c-only i2c-options" hidden><legend>Операция I2C</legend><select id="i2c-operation" aria-label="Операция I2C"><option value="0">Запись</option><option value="1">Чтение</option><option value="2">Запись → чтение</option></select><label>RX · байт<input id="i2c-read" type="number" value="1" min="1" max="256" step="1" aria-label="Количество байт чтения"></label></fieldset>
-                <div class="spi-selects"><label class="i2c-only" hidden>Частота<select id="i2c-hz"><option value="100000">100 кГц</option><option value="400000">400 кГц</option></select></label><label class="spi-only">Частота<select id="spi-hz"><option value="62500">62,5 кГц</option><option value="125000">125 кГц</option><option value="250000">250 кГц</option><option value="500000">500 кГц</option><option value="1000000" selected>1 МГц</option><option value="2000000">2 МГц</option><option value="4000000">4 МГц</option><option value="6000000">6 МГц</option><option value="8000000">8 МГц</option><option value="10000000">10 МГц</option><option value="12000000">12 МГц</option><option value="14000000">14 МГц</option><option value="16000000">16 МГц</option><option value="18000000">18 МГц</option><option value="20000000">20 МГц</option><option value="22000000">22 МГц</option><option value="24000000">24 МГц</option><option value="25000000">25 МГц</option></select></label>
+                <div class="spi-selects"><label class="i2c-only" hidden>Частота<select id="i2c-hz"><option value="100000">100 кГц</option><option value="400000">400 кГц</option></select></label><label class="spi-only">Частота<select id="spi-hz"><option id="spi-legacy-rate" value="" hidden disabled>—</option><option value="187500">187,5 кГц</option><option value="375000">375 кГц</option><option value="750000" selected>750 кГц</option><option value="1500000">1,5 МГц</option><option value="3000000">3 МГц</option><option value="6000000">6 МГц</option><option value="12000000">12 МГц</option><option value="24000000">24 МГц</option></select></label>
                 <label>Формат<select id="spi-format"><option value="hex">HEX-байты</option><option value="ascii">ASCII-текст</option></select></label></div>
             </div>
             <p class="hint" id="bus-hint">Настройки общие для четырёх команд. Одна передача — один CS, 8 бит на кадр. Для чтения добавляй нужные 00/FF; байты RX без протокольной проверки не подтверждают ответ микросхемы.</p>
@@ -491,6 +492,7 @@
     <script>
         const get = (id) => document.getElementById(id);
         let language = 'ru';
+        const spiRates = [187500,375000,750000,1500000,3000000,6000000,12000000,24000000];
         let consoleBus = 2;
         let uartVisible = false;
         let uartDeviceEnabled = false;
@@ -498,6 +500,9 @@
         const originalText = new WeakMap();
         const originalAttributes = new WeakMap();
         const translations = {
+            "Частота старого набора недоступна. Выбери новую перед передачей.": "Legacy preset rate is unavailable. Select a new rate before transmitting.",
+            "Гц · требуется выбор": "Hz · select a new rate",
+            "Тактирование": "Clock tree",
             "Подтверждение сброса": "Confirm reset",
             "Сбросить поправку RTC до 0 ppm? Нулевая поправка будет сохранена во Flash и применена к часам.": "Reset RTC correction to 0 ppm? The zero correction will be saved to Flash and applied to the clock.",
             "Сбросить": "Reset",
@@ -518,7 +523,7 @@
             "Последние 8192 символа · без сохранения во Flash": "Last 8192 characters · not stored in Flash",
             "Команда USART": "USART command",
             "Журнал USART": "USART log",
-            "Пока USART включён, передача SPI заблокирована. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "SPI transmission is blocked while USART is enabled. Connect PA9 to PA10 for loopback: transmitted bytes appear in RX. Do not connect RS-232 directly.",
+            "USART, SPI и I2C используют постоянные частоты и могут работать без отключения USART. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "USART, SPI and I2C use fixed clocks; USART can stay enabled. Connect PA9 to PA10 for loopback: transmitted bytes appear in RX. Do not connect RS-232 directly.",
             "Проверь параметры USART и данные команды.": "Check USART settings and command data.",
             "USART занят передачей.": "USART is transmitting.",
             "Сначала включи USART.": "Enable USART first.",
@@ -852,6 +857,9 @@
             "Удалить выбранный набор из Flash?": "Delete the selected set from Flash?"
 };
         const japaneseTranslations = {
+            "Частота старого набора недоступна. Выбери новую перед передачей.": "旧設定の周波数は使用できません。送信前に新しい周波数を選択してください。",
+            "Гц · требуется выбор": "Hz · 周波数を選択",
+            "Тактирование": "クロック構成",
             "Подтверждение сброса": "リセットの確認",
             "Сбросить поправку RTC до 0 ppm? Нулевая поправка будет сохранена во Flash и применена к часам.": "RTC補正を0 ppmに戻しますか？補正値をFlashに保存し、時計に適用します。",
             "Сбросить": "リセット",
@@ -872,7 +880,7 @@
             "Последние 8192 символа · без сохранения во Flash": "最新8192文字 · Flashには保存しません",
             "Команда USART": "USARTコマンド",
             "Журнал USART": "USARTログ",
-            "Пока USART включён, передача SPI заблокирована. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "USARTが有効な間、SPI送信はできません。PA9とPA10を接続すると送信データをRXで確認できます。RS-232を直接接続しないでください。",
+            "USART, SPI и I2C используют постоянные частоты и могут работать без отключения USART. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "USART、SPI、I2Cは固定クロックで動作し、USARTを無効にする必要はありません。PA9とPA10を接続すると送信データをRXで確認できます。RS-232を直接接続しないでください。",
             "Проверь параметры USART и данные команды.": "USART設定と送信データを確認してください。",
             "USART занят передачей.": "USARTは送信中です。",
             "Сначала включи USART.": "先にUSARTを有効にしてください。",
@@ -1330,12 +1338,25 @@
             originalAttributes.set(element, {title: String(text)});
             element.setAttribute('title', translate(text));
         }
+        function spiRateValid()
+        {
+            return spiRates.includes(Number(get('spi-hz').value));
+        }
+        function setSpiRate(hz)
+        {
+            const legacy = get('spi-legacy-rate');
+            const supported = spiRates.includes(Number(hz));
+            legacy.hidden = supported;
+            legacy.value = supported ? '' : String(hz);
+            setText(legacy, supported ? '—' : hz + ' Гц · требуется выбор');
+            get('spi-hz').value = String(hz);
+        }
         function spiButtons()
         {
             updateCommandCounts();
             for (let i = 0; i < 4; ++i)
             {
-                get('spi-send-' + i).disabled = pendingSpi.length >= 4;
+                get('spi-send-' + i).disabled = pendingSpi.length >= 4 || (consoleBus === 2 && !spiRateValid());
                 setText(get('spi-send-label-' + i), pendingSpi.length >= 4 ? 'Очередь полна' :
                     (spiBusy || pendingSpi.length ? 'В очередь' : 'Передать'));
             }
@@ -1573,6 +1594,7 @@
             {
                 el.hidden = bus !== 1;
             }
+            setSpiRate(get('spi-hz').value);
             get('bus-spi').setAttribute('aria-pressed', String(bus === 2));
             get('bus-i2c').setAttribute('aria-pressed', String(bus === 1));
             setText(get('bus-title'), bus === 2 ? 'SPI2 · внешнее устройство' : 'I2C1 · внешнее устройство');
@@ -1646,6 +1668,16 @@
             {
                 return;
             }
+            const valid = spiRateValid();
+            get('spi-config-status').className = 'hint spi-only' + (valid ? '' : ' input-error');
+            if (!valid)
+            {
+                pendingSpiConfig = null;
+                setText(get('spi-config-status'), 'Частота старого набора недоступна. Выбери новую перед передачей.');
+                spiButtons();
+                return;
+            }
+            spiButtons();
             pendingSpiConfig = {mode: spiMode(), hz: Number(get('spi-hz').value),
                 lsb: get('spi-lsb').checked ? 1 : 0, cs_high: get('spi-cs-high').checked ? 1 : 0};
             pendingSpiConfig.body = 'bus=2 mode=' + pendingSpiConfig.mode + ' hz=' + pendingSpiConfig.hz +
@@ -1734,6 +1766,11 @@
         }
         function queueSpi(index)
         {
+            if (consoleBus === 2 && !spiRateValid())
+            {
+                spiMessage(index, 'Частота старого набора недоступна. Выбери новую перед передачей.', true);
+                return;
+            }
             if (pendingSpi.length >= 4)
             {
                 spiMessage(index, 'Очередь заполнена: дождись выполнения принятых команд.', true);
@@ -1824,7 +1861,7 @@
                 }
                 if (consoleBus === 2)
                 {
-                    get('spi-hz').value = String(settings.hz);
+                    setSpiRate(settings.hz);
                 }
                 get('spi-format').value = settings.format;
                 get('spi-lsb').checked = !!settings.lsb;
@@ -2203,7 +2240,7 @@
             const fw = data.firmware;
             diagnosticCards('about-info', [['Версия ПО', fw.version], ['Сборка UTC', fw.build_utc],
                 ['Базовый коммит', fw.base_commit], ['Исходники · SHA-256', fw.source_sha256],
-                ['Веб-страница · CRC32', fw.web_crc32], ['Компилятор', fw.compiler], ['Среда', fw.c_standard]]);
+                ['Веб-страница · CRC32', fw.web_crc32], ['Компилятор', fw.compiler], ['Среда', fw.c_standard], ['Тактирование', fw.clocks || '—']]);
             get('about-open').disabled = false;
             get('mcu-message').className = valid ? '' : 'input-error';
             setText(get('mcu-message'), !valid ? (flash.present ? 'Неожиданный JEDEC ID' : 'Flash не найдена') :
@@ -2456,7 +2493,7 @@
                     if (!reply.ok)
                     {
                         const message = (await reply.text()).trim();
-                        throw new Error(message === 'Stop USART before SPI transfer' ? 'Отключи USART перед передачей SPI.' : 'SPI: ' + message);
+                        throw new Error('SPI: ' + message);
                     }
                     const result = await reply.json();
                     get('spi-tx-' + spi.index).value = result.tx.match(/../g).join(' ');
@@ -3034,7 +3071,7 @@
                 uartConfigLoaded = true;
             }
             setText(get('uart-state'), (data.enabled ? 'USART включён' : 'USART отключён') +
-                ' · baud: ' + data.actual_baud + ' · ' + data.bits + ['N','O','E'][data.parity] + data.stop + ' · RX: ' + data.rx_total + ' B · TX: ' + data.tx_total +
+                ' · baud: ' + data.actual_baud + ' (' + data.baud + ', ' + ((data.actual_baud / data.baud - 1) * 100).toFixed(3) + '%) · ' + data.bits + ['N','O','E'][data.parity] + data.stop + ' · RX: ' + data.rx_total + ' B · TX: ' + data.tx_total +
                 ' B · lost: ' + uartLost + ' · PE/FE/NE/ORE/DMA/TO: ' + data.errors.join('/'));
             if (data.rx)
             {

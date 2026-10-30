@@ -127,13 +127,13 @@ def run(uc, symbols, call):
                 result, stats = exchange(op, length, hz)
                 assert result == 0, (op, length, state)
                 assert stats[0] == (2 if op == 2 else 0) and stats[1] == length
-                assert stats[2] > 0 and stats[3] == (100000 if hz == 100000 else 380952)
+                assert stats[2] > 0 and stats[3] == (100000 if hz == 100000 else 400000)
                 assert bytes(uc.mem_read(0x20018400, length)) == bytes(range(256))[:length]
                 assert state['events'].count('start') == (2 if op == 2 else 1)
                 assert [item for item in state['events'] if isinstance(item, tuple) and item[0] == 'stop'] == [('stop', max(0, length - 2))]
                 addresses = [item[1] for item in state['events'] if isinstance(item, tuple) and item[0] == 'address']
                 assert addresses == ([0xA0, 0xA1] if op == 2 else [0xA1])
-                assert read32(reg + 0x1C) == (80 if hz == 100000 else 0x800E)
+                assert read32(reg + 0x1C) == (240 if hz == 100000 else 0x8028)
     assert exchange(0, 0)[0] == 0
     assert state['tx'] == [0, 16]
     assert exchange(0, 0, tx=b'AA' * 256)[0] == 0

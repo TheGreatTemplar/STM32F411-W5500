@@ -25,10 +25,10 @@ static void configure(uint32_t hz)
     RCC->APB1RSTR |= RCC_APB1RSTR_I2C1RST;
     RCC->APB1RSTR &= ~RCC_APB1RSTR_I2C1RST;
     I2C1->CR1 = 0U;
-    I2C1->CR2 = 16U; /* APB1 returns to HSI 16 MHz after every SPI2 command. */
+    I2C1->CR2 = BOARD_PCLK1_HZ / 1000000U;
     I2C1->OAR1 = 1UL << 14U;
-    I2C1->CCR = hz == 100000U ? 80U : I2C_CCR_FS | 14U;
-    I2C1->TRISE = hz == 100000U ? 17U : 5U;
+    I2C1->CCR = hz == 100000U ? 240U : I2C_CCR_FS | 40U;
+    I2C1->TRISE = hz == 100000U ? 49U : 15U;
     I2C1->FLTR = 0U;
     I2C1->CR1 = I2C_CR1_PE;
 }
@@ -141,8 +141,8 @@ i2c_error_t board_i2c_console(const i2c_command_t *command, uint8_t rx[I2C_CONSO
     result->tx_done = 0U;
     result->rx_done = 0U;
     result->duration_us = 0U;
-    result->actual_hz = command->hz == 100000U ? 100000U : 380952U;
-    if (!i2c_command_valid(command) || SystemCoreClock != 16000000U)
+    result->actual_hz = command->hz;
+    if (!i2c_command_valid(command) || SystemCoreClock != BOARD_CORE_HZ)
     {
         return I2C_INVALID;
     }
@@ -154,9 +154,9 @@ i2c_error_t board_i2c_console(const i2c_command_t *command, uint8_t rx[I2C_CONSO
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     cycles = DWT->CYCCNT;
-    while ((uint32_t)(DWT->CYCCNT - cycles) < 80U)
+    while ((uint32_t)(DWT->CYCCNT - cycles) < 5U * BOARD_CYCLES_PER_US)
     {
-        __NOP(); /* Bus-free time >= 5 us at 16 MHz. */
+        __NOP(); /* Bus-free time >= 5 us at fixed HCLK. */
     }
     transfer_start = board_millis();
     transfer_error = I2C_OK;
@@ -195,7 +195,7 @@ i2c_error_t board_i2c_console(const i2c_command_t *command, uint8_t rx[I2C_CONSO
     {
         ok = wait_flag(&I2C1->SR2, I2C_SR2_BUSY, 0U) && wait_flag(&I2C1->CR1, I2C_CR1_STOP, 0U);
     }
-    result->duration_us = (uint32_t)(DWT->CYCCNT - cycles) / 16U;
+    result->duration_us = (uint32_t)(DWT->CYCCNT - cycles) / BOARD_CYCLES_PER_US;
     if (!ok && transfer_error != I2C_ARBITRATION_LOST && (I2C1->SR2 & I2C_SR2_MSL) != 0U)
     {
         I2C1->CR1 |= I2C_CR1_STOP;

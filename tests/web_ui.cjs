@@ -70,7 +70,7 @@ class TestDate extends Date
     }
 }
 const saved = {present: true, ready: true, busy: false, scanning: false, scan: 64, id: 63, name: 'Default', has_saved: true, save_ok: true,
-    error: 0, sequence: 7, settings: {mode: 3, hz: 25000000, lsb: 1, cs_high: 1, format: 'hex'},
+    error: 0, sequence: 7, settings: {mode: 3, hz: 24000000, lsb: 1, cs_high: 1, format: 'hex'},
     commands: ['9F 00 00 00', 'AA BB', '', '01 02']};
 const libraryRecords = new Map([[63, structuredClone(saved)]]);
 function createElement()
@@ -439,7 +439,7 @@ async function test()
     vm.runInContext(source, context);
     await vm.runInContext('update()', context);
     assert.equal(elements.get('spi-command-1').value, 'AA BB');
-    assert.equal(elements.get('spi-hz').value, '25000000');
+    assert.equal(elements.get('spi-hz').value, '24000000');
     assert.equal(elements.get('spi-mode-description').textContent, 'CPOL=1 · CPHA=1');
     assert.equal(elements.get('spi-lsb').checked, true);
     assert.equal(elements.get('spi-cs-high').checked, true);
@@ -583,7 +583,7 @@ async function test()
     }
     elements.get('spi-format').value = 'hex';
     elements.get('spi-command-0').value = '9F 00 00 00';
-    elements.get('spi-hz').value = '1000000';
+    elements.get('spi-hz').value = '750000';
     elements.get('spi-mode-3').checked = true;
     elements.get('spi-lsb').checked = false;
     elements.get('spi-cs-high').checked = false;
@@ -594,7 +594,7 @@ async function test()
     assert.equal(requests.length, beforeSpi + 1);
     assert.equal(requests.at(-1).url, '/api/spi');
     assert.equal(requests.at(-1).options.body,
-        'bus=2 mode=3 hz=1000000 lsb=0 cs_high=0 format=hex\n9F 00 00 00');
+        'bus=2 mode=3 hz=750000 lsb=0 cs_high=0 format=hex\n9F 00 00 00');
     assert.equal(elements.get('spi-tx-0').value, '9F 00 00 00');
     assert.equal(elements.get('spi-rx-0').value, 'EF 40 15 00');
     assert.equal(elements.get('spi-send-0').disabled, false);
@@ -1076,6 +1076,15 @@ async function test()
     assert.equal(systemState.port, 5026);
     assert.match(elements.get('network-message').textContent, /65535/);
     vm.runInContext("['uart-format','uart-eol','uart-command','uart-baud','uart-bits','uart-parity','uart-stop'].forEach(get)",context);
+    vm.runInContext('setSpiRate(1000000); queueSpiConfig()',context);
+    assert.equal(elements.get('spi-hz').value,'1000000');
+    assert.equal(elements.get('spi-legacy-rate').hidden,false);
+    const beforeLegacy = requests.filter(r=>r.url==='/api/spi').length;
+    vm.runInContext('consoleBus=2; queueSpi(0)',context);
+    assert.equal(requests.filter(r=>r.url==='/api/spi').length,beforeLegacy);
+    assert.match(elements.get('spi-message-0').textContent,/Частота старого/);
+    vm.runInContext('setSpiRate(750000); queueSpiConfig()',context);
+    assert.equal(elements.get('spi-legacy-rate').hidden,true);
     elements.get('uart-format').value = '0';
     elements.get('uart-eol').value = '3';
     elements.get('uart-command').value = '55 AA';

@@ -49,20 +49,16 @@ def snapshot(cursor=0):
 call('usart_init')
 for irq, handler in [(37, 'USART1_IRQHandler'), (58, 'DMA2_Stream2_IRQHandler')]:
     assert read(symbols['__Vectors'] + (16 + irq) * 4) == symbols[handler] | 1
-assert not call('usart_enabled')
+assert not snapshot()['enabled']
 assert snapshot()['baud'] == 115200
 assert read(0x40020024) & 0xFF0 == 0x770  # PA9/PA10 AF7
 assert command('start baud=115200 bits=8 parity=0 stop=1\n') == 0
-assert call('usart_enabled')
-assert read(0x40011008) == 139
+assert snapshot()['enabled']
+assert read(0x40011008) == 104
 assert read(0x40026440) & (7 << 25) == 4 << 25  # RX stream2 channel4
 assert read(0x40026440) & ((1 << 8) | (1 << 4) | (1 << 3)) == (1 << 8) | (1 << 4) | (1 << 3)
-assert bytes(uc.mem_read(symbols['board_usart_clock_lock'], 1)) == b'\1'
-# The SPI guard must reject before dereferencing the command or changing clocks.
-assert call('board_spi_console', 0, 0) == 0
 before = read(0x40011008)
 for invalid in ['start baud=0 bits=8 parity=0 stop=1\n',
-                'start baud=921600 bits=8 parity=0 stop=1\n',
                 'start baud=115200 bits=7 parity=0 stop=1\n',
                 'start baud=115200 bits=9 parity=0 stop=1\n',
                 'start baud=115200 bits=8 parity=3 stop=1\n',
@@ -110,15 +106,48 @@ assert late['lost'] == total - 8192
 assert late['more'] == 8192 - 1024 and len(late['rx']) == 2048
 assert snapshot(total)['rx'] == ''
 
-for baud in [9600, 19200, 38400, 57600, 115200, 230400, 460800, 500000, 1000000]:
+# SPI2 DMA1 must preserve an active USART1 DMA2 transfer and RX cursor.
+from spi_dma_tests import DmaModel
+from unicorn import UC_HOOK_CODE
+uc.mem_map(0x40003000, 0x3000)
+uc.mem_map(0xE0001000, 0x1000)
+write(symbols['SystemCoreClock'], 96000000)
+write(0x40023800, 0x030B0003)
+write(0x40023808, 0xD00A)
+write(0x40003808, 2)
+assert command('tx format=0 eol=0\n11 22 33') == 0
+saved = {a: read(a) for a in [0x40011008,0x4001100C,0x40011014,
+                             0x40026440,0x400264B8,0x400264BC,0x400264C4,
+                             0x40023800,0x40023808,0x40013000]}
+body = b'bus=2 mode=0 hz=24000000 lsb=0 cs_high=0 format=hex\n55 AA 00 FF'
+uc.mem_write(0x2001B000, body)
+assert call('spi_command_parse', 0x2001B000, len(body), 0x2001C000)
+def cycles(machine, address, size, unused):
+    write(0xE0001004, (read(0xE0001004) + 1) & 0xFFFFFFFF)
+hook = uc.hook_add(UC_HOOK_CODE, cycles)
+model = DmaModel(uc, xor=0xA5)
+assert call('board_spi_console', 0x2001C000, 0x2001C400)
+model.close()
+uc.hook_del(hook)
+assert model.last == bytes.fromhex('55 AA 00 FF')
+assert all(read(a) == value for a, value in saved.items())
+receive(b'\x12\x34')
+assert snapshot(total - 2)['rx'] == '1234'
+assert snapshot()['tx_busy'] and snapshot()['enabled']
+write(0x400264BC, 0)
+write(0x40011000, 1 << 6)
+assert not snapshot()['tx_busy']
+
+for baud in [300,600,1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,500000,921600,1000000]:
     for bits, par in [(8, 0), (8, 1), (8, 2), (7, 1), (7, 2)]:
         assert command(f'start baud={baud} bits={bits} parity={par} stop=2\n') == 0
-        assert read(0x40011008) == (16000000 + baud // 2) // baud
+        divider = (12000000 + baud // 2) // baud
+        assert read(0x40011008) == (((divider//8)<<4)|(divider%8) if divider<16 else divider)
+        assert bool(read(0x4001100C) & (1<<15)) == (divider<16)
         assert bool(read(0x4001100C) & (1 << 12)) == (bits == 8 and par != 0)
 assert command('tx format=0 eol=0\nFF') == 1  # 7-bit mode rejects truncation.
 assert command('stop\n') == 0
-assert not call('usart_enabled')
-assert not uc.mem_read(symbols['board_usart_clock_lock'], 1)[0]
+assert not snapshot()['enabled']
 assert command('tx format=0 eol=0\n55') == 3
 assert command('start baud=115200 bits=8 parity=0 stop=1\n') == 0
 write(0x40011000, 0xF)
@@ -126,16 +155,16 @@ call('USART1_IRQHandler')
 assert snapshot(total)['errors'][:4] == [1, 1, 1, 1]
 write(0x40026400, 1 << 19)  # RX DMA transfer error.
 call('DMA2_Stream2_IRQHandler')
-assert not call('usart_enabled') and not uc.mem_read(symbols['board_usart_clock_lock'], 1)[0]
+assert not snapshot()['enabled']
 assert snapshot(total)['errors'][4] == 1
 write(0x40026400, 0)
 assert command('start baud=115200 bits=8 parity=0 stop=1\n') == 0
 assert command('tx format=0 eol=0\n55') == 0
 write(symbols['tick_ms'], 1000)
 assert snapshot(total)['errors'][5] == 1
-assert not call('usart_enabled')
+assert not snapshot()['enabled']
 assert command('start baud=115200 bits=8 parity=0 stop=1\n') == 0
 assert command('stop\n') == 0
-assert not call('usart_enabled') and not uc.mem_read(symbols['board_usart_clock_lock'], 1)[0]
+assert not snapshot()['enabled']
 
-print('USART1: DMA2 mapping, 45 frame/rate modes, TX completion, independent RX cursors, wrap/overflow, strict input, errors and SPI clock guard passed')
+print('USART1: DMA2 mapping, 75 frame/rate modes, TX completion, independent RX cursors, wrap/overflow, strict input, errors passed')

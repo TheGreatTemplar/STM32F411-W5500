@@ -146,7 +146,8 @@ static bool mcu_response(http_client_t *client)
                      "{\"firmware\":{\"version\":\"%s\",\"build_utc\":\"%s\","
                      "\"base_commit\":\"%s\",\"source_sha256\":\"%s\","
                      "\"web_crc32\":\"%s\",\"compiler\":\"ArmClang %lu\","
-                     "\"c_standard\":\"C99 / CMSIS\"},\"storage\":%s}",
+                     "\"c_standard\":\"C99 / CMSIS\",\"clocks\":\"HSE 25 MHz / HCLK 96 / APB1 48 / "
+                     "APB2 12 MHz\"},\"storage\":%s}",
                      FW_VERSION, FW_BUILD_UTC, FW_BASE_COMMIT, FW_SOURCE_SHA256, FW_WEB_CRC32,
                      (unsigned long)__ARMCC_VERSION, storage);
     return count > 0 && (size_t)count < sizeof(client->body) &&
@@ -329,11 +330,6 @@ static bool spi_response(http_client_t *client, bool config)
     {
         return response(client, 400U, "Bad Request", "text/plain", "Invalid SPI command\n", 20U,
                         "");
-    }
-    if (usart_enabled())
-    {
-        const char *message = "Stop USART before SPI transfer\n";
-        return response(client, 409U, "Conflict", "text/plain", message, strlen(message), "");
     }
     if (!board_spi_console(&command, rx))
     {

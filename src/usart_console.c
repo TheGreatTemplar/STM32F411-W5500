@@ -56,7 +56,6 @@ static void fatal_dma(void)
     RCC->AHB1RSTR &= ~RCC_AHB1RSTR_DMA2RST;
     enabled = false;
     transmitting = false;
-    board_usart_clock_lock = false;
     ++errors[4];
 }
 
@@ -135,7 +134,6 @@ void usart_init(void)
     GPIOA->PUPDR = (GPIOA->PUPDR & ~(15UL << 18U)) | (5UL << 18U);
     enabled = false;
     transmitting = false;
-    board_usart_clock_lock = false;
     head = 0U;
     retained = 0U;
     tx_count = 0U;
@@ -259,7 +257,6 @@ uint32_t usart_control(const char *body, size_t size)
             fatal_dma();
         }
         enabled = false;
-        board_usart_clock_lock = false;
         __set_PRIMASK(primask);
         return stopped ? 0U : 4U;
     }
@@ -269,9 +266,11 @@ uint32_t usart_control(const char *body, size_t size)
         literal(&text, end, " stop=") && decimal(&text, end, &stop) && literal(&text, end, "\n") &&
         text == end)
     {
-        if ((new_baud != 9600U && new_baud != 19200U && new_baud != 38400U && new_baud != 57600U &&
-             new_baud != 115200U && new_baud != 230400U && new_baud != 460800U &&
-             new_baud != 500000U && new_baud != 1000000U) ||
+        if ((new_baud != 300U && new_baud != 600U && new_baud != 1200U && new_baud != 2400U &&
+             new_baud != 4800U && new_baud != 9600U && new_baud != 19200U && new_baud != 38400U &&
+             new_baud != 57600U && new_baud != 115200U && new_baud != 230400U &&
+             new_baud != 460800U && new_baud != 500000U && new_baud != 921600U &&
+             new_baud != 1000000U) ||
             (bits != 7U && bits != 8U) || par > 2U || (bits == 7U && par == 0U) ||
             (stop != 1U && stop != 2U))
         {
@@ -281,7 +280,7 @@ uint32_t usart_control(const char *body, size_t size)
         {
             return 2U;
         }
-        divider = (16000000U + new_baud / 2U) / new_baud;
+        divider = (BOARD_PCLK2_HZ + new_baud / 2U) / new_baud;
         primask = __get_PRIMASK();
         __disable_irq();
         receive_poll();
@@ -297,7 +296,7 @@ uint32_t usart_control(const char *body, size_t size)
         DMA2->HIFCR = TX_FLAGS;
         (void)USART1->SR;
         (void)USART1->DR;
-        USART1->BRR = divider;
+        USART1->BRR = divider < 16U ? ((divider / 8U) << 4U) | (divider % 8U) : divider;
         USART1->CR2 = stop == 2U ? USART_CR2_STOP_1 : 0U;
         DMA2_Stream2->PAR = (uint32_t)&USART1->DR;
         DMA2_Stream2->M0AR = (uint32_t)dma_rx;
@@ -308,17 +307,16 @@ uint32_t usart_control(const char *body, size_t size)
         rx_position = 0U;
         DMA2_Stream2->CR |= DMA_SxCR_EN;
         USART1->CR3 = USART_CR3_DMAR | USART_CR3_EIE;
-        USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_IDLEIE |
-                      (bits == 8U && par != 0U ? USART_CR1_M : 0U) |
-                      (par != 0U ? USART_CR1_PCE | USART_CR1_PEIE : 0U) |
-                      (par == 1U ? USART_CR1_PS : 0U);
+        USART1->CR1 =
+            USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_IDLEIE |
+            (divider < 16U ? USART_CR1_OVER8 : 0U) | (bits == 8U && par != 0U ? USART_CR1_M : 0U) |
+            (par != 0U ? USART_CR1_PCE | USART_CR1_PEIE : 0U) | (par == 1U ? USART_CR1_PS : 0U);
         baud = new_baud;
-        actual_baud = 16000000U / divider;
+        actual_baud = BOARD_PCLK2_HZ / divider;
         data_bits = bits;
         parity = par;
         stops = stop;
         enabled = true;
-        board_usart_clock_lock = true;
         __set_PRIMASK(primask);
         return 0U;
     }

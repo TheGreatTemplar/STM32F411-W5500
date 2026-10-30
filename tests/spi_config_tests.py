@@ -8,7 +8,7 @@ def run(uc, symbols, call):
     hook = uc.hook_add(UC_HOOK_MEM_WRITE, lambda m, a, addr, size, value, data: writes.append(value),
                        begin=0x4000380C, end=0x4000380F)
     for mode in range(4):
-        text = f'bus=2 mode={mode} hz=25000000 lsb=1 cs_high=0 format=hex\n00'.encode()
+        text = f'bus=2 mode={mode} hz=24000000 lsb=1 cs_high=0 format=hex\n00'.encode()
         uc.mem_write(0x20010000, text)
         uc.reg_write(UC_ARM_REG_R0, 0x20010000)
         uc.reg_write(UC_ARM_REG_R1, len(text))
@@ -20,7 +20,7 @@ def run(uc, symbols, call):
         cr1 = int.from_bytes(uc.mem_read(0x40003800, 4), 'little')
         assert cr1 & 3 == mode and cr1 & 64 and cr1 & 128
         assert int.from_bytes(uc.mem_read(0x40020418, 4), 'little') == 1 << 12
-        assert int.from_bytes(uc.mem_read(symbols['SystemCoreClock'], 4), 'little') == 16000000
+        assert int.from_bytes(uc.mem_read(symbols['SystemCoreClock'], 4), 'little') == 96000000
     before = bytes(uc.mem_read(0x40003800, 4))
     uc.mem_write(0x40003808, (128).to_bytes(4, 'little'))
     uc.reg_write(UC_ARM_REG_R0, 0x20018000)

@@ -1,13 +1,13 @@
 #ifndef BOARD_H
 #define BOARD_H
 
+#include "clock.h"
 #include "stm32f4xx.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-extern volatile bool board_usart_clock_lock;
 
-void board_init(void);
+bool board_init(void);
 void SysTick_Handler(void);
 uint32_t board_millis(void);
 void board_delay(uint32_t duration_ms);
