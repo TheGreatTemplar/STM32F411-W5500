@@ -1082,6 +1082,12 @@ async function test()
     await vm.runInContext('saveSystem(true)', context);
     assert.equal(systemState.port, 5026);
     assert.match(elements.get('network-message').textContent, /65535/);
+    vm.runInContext("rtcBusy = false; showRtc({ready:false,lse_ready:true,set:false,error:0})",context);
+    assert.equal(elements.get('rtc-message').textContent,'Подготовка RTC…');
+    vm.runInContext("showRtc({ready:false,lse_ready:false,set:false,error:0})",context);
+    assert.equal(elements.get('rtc-message').textContent,'LSE ещё не готов…');
+    vm.runInContext("showRtc({ready:true,lse_ready:true,set:true,error:0,datetime:'2032-02-29T12:34:56'})",context);
+    assert.equal(elements.get('rtc-message').textContent,'RTC · LSE 32,768 кГц');
     vm.runInContext("['uart-format','uart-eol','uart-command','uart-baud','uart-bits','uart-parity','uart-stop'].forEach(get)",context);
     vm.runInContext('setSpiRate(1000000); queueSpiConfig()',context);
     assert.equal(elements.get('spi-hz').value,'750000');
