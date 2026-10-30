@@ -5,7 +5,7 @@
 #define MEDIA_BASE 7340032UL
 #define OLD_BASE 524288U
 #define LAST_PAIR (OLD_BASE + 63U * 8192U)
-static uint8_t media[1056768];
+static uint8_t media[1581056];
 static uint32_t now;
 static uint32_t busy_polls;
 static uint32_t writes;
@@ -77,11 +77,11 @@ bool board_flash_transfer(const uint8_t *prefix, size_t prefix_size, const uint8
         return false;
     }
     address = ((uint32_t)prefix[1] << 16U) | ((uint32_t)prefix[2] << 8U) | prefix[3];
-    if ((address < MEDIA_BASE - 8192U) || (address >= 8388608UL) || (size > 8388608UL - address))
+    if ((address < 0x0066E000UL) || (address >= 8388608UL) || (size > 8388608UL - address))
     {
         return false;
     }
-    offset =
+    offset = address < 0x006EE000UL ? 1056768U + address - 0x0066E000UL :
         address >= MEDIA_BASE ? address - MEDIA_BASE : 1048576U + address - (MEDIA_BASE - 8192U);
     if (prefix[0] == 0x03U)
     {
@@ -222,7 +222,7 @@ int test_entry(void)
     CHECK(command_storage_json(json, sizeof(json)) != 0U);
     CHECK(strstr(json, "\"complete\":true") != NULL);
     CHECK(strstr(json, "\"capacity\":8388608") != NULL);
-    CHECK(strstr(json, "\"unallocated_bytes\":7266304") != NULL);
+    CHECK(strstr(json, "\"unallocated_bytes\":6742016") != NULL);
     CHECK(strstr(json, "\"spi\":{\"used\":0,\"blocked\":0,\"free\":64}") != NULL);
     CHECK(strstr(json, "\"i2c\":{\"used\":0,\"blocked\":0,\"free\":64}") != NULL);
     CHECK(strstr(json, "\"help_bytes\":65536") != NULL);
@@ -368,7 +368,7 @@ int test_entry(void)
     CHECK(command_library_save(COMMAND_LIBRARY_NEW, "New", 3U, a, sizeof(a) - 1U) == STORE_OK);
     CHECK(finish_save());
     CHECK(command_library_load(0U) == STORE_OK);
-    CHECK(command_library_json(json, sizeof(json), 128U) == 0U);
+    CHECK(command_library_json(json, sizeof(json), COMMAND_LIBRARY_TOTAL) == 0U);
     memset(media, 0xFF, sizeof(media));
     init_store();
     CHECK(command_store_save(a, sizeof(a) - 1U) == STORE_OK);
@@ -495,7 +495,7 @@ int test_entry(void)
     }
     memset(media, 0xFF, 8192U);
     command_store_init();
-    for (i = 0U; i < 4106U; ++i)
+    for (i = 0U; i < 6154U; ++i)
     {
         command_store_poll();
     }
@@ -511,7 +511,7 @@ int test_entry(void)
     memcpy(media + OLD_BASE, media + 8192U, 8192U);
     memset(media, 0xFF, 16384U);
     command_store_init();
-    for (i = 0U; i < 4096U; ++i)
+    for (i = 0U; i < 6144U; ++i)
     {
         command_store_poll();
     }
@@ -566,7 +566,7 @@ int test_entry(void)
     CHECK(command_library_load(127U) == STORE_OK);
     CHECK(command_store_json(json, sizeof(json)) != 0U && strstr(json, "\"bus\":1") != NULL);
     CHECK(command_library_json(json, sizeof(json), 120U) != 0U);
-    CHECK(strstr(json, "\"used\":128") != NULL && strstr(json, "\"next\":null") != NULL);
+    CHECK(strstr(json, "\"used\":128") != NULL && strstr(json, "\"next\":128") != NULL);
     /* v4 names survive reboot and preserve arbitrary printable UTF-8. */
     memset(media, 0xFF, sizeof(media));
     init_store();
@@ -740,5 +740,29 @@ int test_entry(void)
         CHECK(command_system_save(&settings, 0U) == STORE_FOREIGN_DATA);
         CHECK(writes == before && media[1048576U] == 0x5AU);
     }
+    memset(media, 0xFF, sizeof(media));
+    init_store();
+    {
+        static const char uart[] = "bus=3 baud=115200 parity=0 seven=0 stops=0 ascii=0 eol=3\n"
+                                   "lengths=5,2,0,2\n55 AAFF00";
+        static const char bad_uart[] = "bus=3 baud=115200 parity=0 seven=1 stops=0 ascii=0 eol=0\n"
+                                       "lengths=0,0,0,0\n";
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, "UART", 4U, uart, sizeof(uart) - 1U) == STORE_OK);
+        CHECK(finish_save());
+        init_store();
+        CHECK(command_library_load(128U) == STORE_OK);
+        CHECK(command_store_json(json, sizeof(json)) != 0U);
+        CHECK(strstr(json, "\"bus\":3") != NULL);
+        CHECK(strstr(json, "55 AA") != NULL);
+        CHECK(command_library_save(0U, "UART", 4U, uart, sizeof(uart) - 1U) == STORE_INVALID);
+        CHECK(command_library_save(COMMAND_LIBRARY_NEW, "Bad", 3U, bad_uart, sizeof(bad_uart) - 1U) == STORE_INVALID);
+        CHECK(command_library_delete(128U) == STORE_OK);
+        CHECK(finish_save());
+        init_store();
+        CHECK(command_library_load(128U) == STORE_NOT_FOUND);
+    }
     return 0;
 }
+
+
+

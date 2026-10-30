@@ -155,6 +155,7 @@
         #led-message:empty { display: none; }
         fieldset { border: 1px solid #476273; border-radius: 10px; padding: 10.2px; }
         legend, .hint { color: #a6b7c7; font-size: 13px; }
+        fieldset label { font-size: 13px; }
         label { display: inline-flex; align-items: center; gap: 6px; }
         select, textarea { color: #e9eff5; background: #101923; border: 1px solid #476273; border-radius: 8px; padding: 8.5px; font: inherit; }
         textarea { display: block; width: 100%; min-height: calc(1.5em + 19px); height: calc(1.5em + 19px); line-height: 1.5; font-family: ui-monospace,monospace; resize: vertical; }
@@ -540,7 +541,7 @@
     <dialog id="command-library" aria-labelledby="library-title">
         <div class="library-header"><h2 id="library-title">Библиотека команд</h2><button type="button" id="library-close">Закрыть</button></div>
         <div class="library-fields">
-            <label id="library-select-row">Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="128">Новый набор</option></select></label>
+            <label id="library-select-row">Набор<select id="library-select" aria-label="Сохранённые наборы"><option value="192">Новый набор</option></select></label>
             <label id="library-name-row" hidden>Имя<input type="text" id="library-name" maxlength="64" value="Default" aria-label="Имя набора, до 32 символов"></label>
         </div>
         <div class="library-actions">
@@ -617,6 +618,7 @@
         let language = 'ru';
         const spiRates = [187500,375000,750000,1500000,3000000,6000000,12000000,24000000];
         let consoleBus = 2;
+        let uartSelectedSet = 192;
         let uartVisible = false;
         let uartDeviceEnabled = false;
         const busDrafts = {};
@@ -1385,6 +1387,15 @@
             }
         }
         const helpTips = {
+            "spi-msb": ["Сначала старший бит каждого байта.", "Most significant bit first in each byte.", "各バイトの上位ビットから送信。"],
+            "spi-lsb": ["Сначала младший бит каждого байта.", "Least significant bit first in each byte.", "各バイトの下位ビットから送信。"],
+            "spi-cs-low": ["CS активен низким уровнем на протяжении всей посылки.", "CS stays low for the entire transaction.", "転送中はCSをLOWに保持。"],
+            "spi-cs-high": ["CS активен высоким уровнем на протяжении всей посылки.", "CS stays high for the entire transaction.", "転送中はCSをHIGHに保持。"],
+            "uart-stop": ["Количество стоп-битов после каждого символа.", "Number of stop bits after each character.", "各文字のストップビット数。"],
+            "uart-format": ["HEX: пары цифр. ASCII: текст. Формат общий для четырёх сообщений.", "HEX: byte pairs. ASCII: text. Shared by all four messages.", "HEXは16進数、ASCIIは文字。4メッセージ共通。"],
+            "library-select": ["Выбери набор текущей шины. Загрузка заменит четыре команды и настройки.", "Select a preset for the current bus. Loading replaces four commands and settings.", "現在のバスのセットを選択。4コマンドと設定を置換。"],
+            "library-name": ["Имя набора: до 32 символов. Для каждой шины 64 места.", "Preset name: up to 32 characters. 64 slots per bus.", "セット名は32文字まで。バスごとに64スロット。"],
+
             "help-open": [
                 "Подробная справка из W25Q64JV откроется в новой вкладке.",
                 "Detailed Help from W25Q64JV opens in a new tab.",
@@ -1466,9 +1477,9 @@
                 "IP/ポート変更後は新しいURLへ接続。設定はFlashに保存します。"
             ],
             "library-open-save": [
-                "Сохраняет четыре SPI/I2C-команды, имена и настройки выбранной шины; USART здесь не сохраняется.",
-                "Stores four SPI/I2C commands, names and bus settings. USART is not saved here.",
-                "SPI/I2Cの4コマンド・名前・バス設定を保存。USARTは保存しません。"
+                "Сохраняет четыре SPI/I2C-команды, имена и настройки выбранной шины; USART сохраняется в отдельной области.",
+                "Stores four SPI/I2C commands, names and bus settings. USART uses its own storage bank.",
+                "SPI/I2Cの4コマンド・名前・バス設定を保存。USARTは専用領域に保存。"
             ],
             "about-open": [
                 "Версия, дата сборки, базовый коммит, SHA-256 исходников и CRC32 страницы.",
@@ -1566,6 +1577,18 @@
             catch (error)
             {
                 // The switch still works when browser storage is unavailable.
+            }
+            for (let i = 0; i < 4; ++i)
+            {
+                for (const prefix of ['spi-command-', 'spi-tx-', 'spi-rx-'])
+                {
+                    const texts = prefix === 'spi-command-' ? ['Введите до 256 байт; угол окна позволяет изменить высоту.', 'Enter up to 256 bytes; drag the corner to resize.', '256バイトまで入力。隅をドラッグして高さを変更。'] :
+                        prefix === 'spi-tx-' ? ['Фактически переданные байты последней посылки.', 'Bytes sent in the last transaction.', '直前の転送で送信したバイト。'] :
+                        ['Принятые байты последней посылки.', 'Bytes received in the last transaction.', '直前の転送で受信したバイト。'];
+                    get(prefix + i).setAttribute('title', texts[language === 'ru' ? 0 : language === 'en' ? 1 : 2]);
+                }
+                const field = get(i === 0 ? 'uart-command' : 'uart-command-' + i);
+                field.setAttribute('title', ['Сообщение USART: до 256 байт плюс окончание строки.', 'USART message: up to 256 bytes plus line ending.', 'USARTメッセージ：256バイト＋改行。'][language === 'ru' ? 0 : language === 'en' ? 1 : 2]);
             }
             for (const [id, texts] of Object.entries(helpTips))
             {
@@ -1691,7 +1714,7 @@
         let pendingLibrary = null;
         let libraryBusy = false;
         let librarySets = [];
-        let selectedSet = 128;
+        let selectedSet = 192;
         let libraryLoaded = false;
         let libraryStats = {blocked_spi: 0, blocked_i2c: 0};
         let pendingSave = null;
@@ -1853,7 +1876,7 @@
             }
             else
             {
-                selectedSet = 128;
+                selectedSet = 192;
                 draftDirty = false;
                 get('library-name').value = 'I2C';
                 get('spi-format').value = 'hex';
@@ -1925,6 +1948,10 @@
         }
         function commandText(index)
         {
+            if (uartVisible)
+            {
+                return uartField('command', index).value;
+            }
             return consoleBus === 1 && get('i2c-operation').value === '1' ? '' : get('spi-command-' + index).value;
         }
         get('bus-spi').addEventListener('click', () => showBus(2));
@@ -1971,6 +1998,13 @@
         }
         function settingsLine()
         {
+            if (uartVisible)
+            {
+                return 'bus=3 baud=' + get('uart-baud').value + ' parity=' + get('uart-parity').value +
+                    ' seven=' + (get('uart-bits').value === '7' ? 1 : 0) +
+                    ' stops=' + (get('uart-stop').value === '2' ? 1 : 0) +
+                    ' ascii=' + get('uart-format').value + ' eol=' + get('uart-eol').value;
+            }
             if (consoleBus === 1)
             {
                 return 'bus=1 hz=' + get('i2c-hz').value + ' addr=' + parseInt(get('i2c-address').value, 16) +
@@ -2013,7 +2047,7 @@
         }
         function draftSnapshot()
         {
-            return JSON.stringify([get('library-name').value || '', settingsLine(), ...Array.from({length: 4}, (_, i) => [get('spi-name-' + i).value, get('spi-command-' + i).value])]);
+            return JSON.stringify([get('library-name').value || '', settingsLine(), ...Array.from({length: 4}, (_, i) => [uartVisible ? '' : get('spi-name-' + i).value, commandText(i)])]);
         }
         function markDirty()
         {
@@ -2089,7 +2123,7 @@
                 return;
             }
             const texts = Array.from({length: 4}, (_, i) => commandText(i));
-            const settingsError = i2cSettingsError();
+            const settingsError = uartVisible ? '' : i2cSettingsError();
             if (settingsError)
             {
                 get('store-status').className = 'input-error';
@@ -2098,7 +2132,7 @@
             }
             for (let i = 0; i < 4; ++i)
             {
-                const error = commandNameError(get('spi-name-' + i).value) || validateText(texts[i], true);
+                const error = uartVisible ? (texts[i] && !uartCount(i) ? 'Проверь параметры USART и данные команды.' : '') : commandNameError(get('spi-name-' + i).value) || validateText(texts[i], true);
                 if (error || texts[i].length > 768)
                 {
                     spiMessage(i, error || 'Максимум 768 символов для сохранения.', true);
@@ -2114,10 +2148,10 @@
                 setText(get('store-status'), 'Имя: от 1 до 32 символов, без управляющих символов и слешей.');
                 return;
             }
-            const names = Array.from({length: 4}, (_, i) => get('spi-name-' + i).value || '');
+            const names = Array.from({length: 4}, (_, i) => uartVisible ? '' : get('spi-name-' + i).value || '');
             const snapshot = settingsLine() + '\nlengths=' + texts.map((text) => text.length).join(',') + '\n' + texts.join('') +
                 '\nnames=' + names.map(name => new TextEncoder().encode(name).length).join(',') + '\n' + names.join('');
-            pendingSave = 'save ' + (asNew ? 128 : selectedSet) + ' ' + new TextEncoder().encode(name).length + '\n' + name + '\n' + snapshot;
+            pendingSave = 'save ' + (asNew ? 192 : selectedSet) + ' ' + new TextEncoder().encode(name).length + '\n' + name + '\n' + snapshot;
             saveFingerprint = draftSnapshot();
             saveBusy = true;
             libraryButtons();
@@ -2132,6 +2166,42 @@
             if (initial && data.has_saved && !data.scanning && !draftDirty)
             {
                 const settings = data.settings;
+                if (settings.bus === 3)
+                {
+                    if (!uartVisible)
+                    {
+                        uartVisible = true;
+                        get('uart-console').hidden = false;
+                        get('sync-console').hidden = true;
+                        get('sync-state').hidden = true;
+                        get('bus-usart').setAttribute('aria-pressed', 'true');
+                        get('bus-spi').setAttribute('aria-pressed', 'false');
+                        get('bus-i2c').setAttribute('aria-pressed', 'false');
+                    }
+                    selectedSet = data.id;
+                    get('library-name').value = data.name || 'USART';
+                    for (const [id, value] of [['baud', settings.hz], ['bits', settings.lsb ? 7 : 8],
+                        ['parity', settings.mode], ['stop', settings.cs_high ? 2 : 1],
+                        ['format', settings.format === 'ascii' ? 1 : 0], ['eol', settings.address]])
+                    {
+                        get('uart-' + id).value = String(value);
+                    }
+                    for (let i = 0; i < 4; ++i)
+                    {
+                        uartField('command', i).value = data.commands[i];
+                        uartLast[i] = data.commands[i];
+                        uartCount(i);
+                    }
+                    uartConfigLoaded = true;
+                    draftDirty = false;
+                    controlUart('start');
+                }
+                else
+                {
+                uartVisible = false;
+                get('uart-console').hidden = true;
+                get('sync-console').hidden = false;
+                get('sync-state').hidden = false;
                 switchConsole(settings.bus === 1 ? 1 : 2, true);
                 selectedSet = data.id;
                 get('library-name').value = data.name || 'Default';
@@ -2165,6 +2235,7 @@
                 i2cMode();
             updateCommandCounts();
                 queueSpiConfig();
+                }
             }
             const completed = saveBusy && !data.busy && !data.scanning;
             storeWaiting = data.busy || data.scanning;
@@ -2174,7 +2245,7 @@
             }
             if (data.scanning)
             {
-                setText(get('store-status'), data.migrating ? 'Перенос наборов I2C…' : 'Чтение библиотеки: ' + data.scan + ' / 128');
+                setText(get('store-status'), data.migrating ? 'Перенос наборов I2C…' : 'Чтение библиотеки: ' + data.scan + ' / 192');
                 libraryButtons();
                 return;
             }
@@ -2195,7 +2266,7 @@
             }
             if (completed && data.save_ok)
             {
-                selectedSet = data.has_saved ? data.id : 128;
+                selectedSet = data.has_saved ? data.id : 192;
                 libraryLoaded = false;
             }
             if (flashReady && !libraryLoaded && !pendingLibrary && !libraryBusy)
@@ -2210,11 +2281,11 @@
         function libraryButtons()
         {
             busButtons();
-            const busy = saveBusy || storeWaiting || libraryBusy || !flashReady;
+            const busy = saveBusy || storeWaiting || libraryBusy || !flashReady || (uartVisible && (uartWriting || uartTxBusy));
             get('store-save').disabled = busy;
             get('library-new').disabled = busy;
-            get('library-load').disabled = busy || Number(get('library-select').value) >= 128;
-            get('library-delete').disabled = busy || Number(get('library-select').value) >= 128;
+            get('library-load').disabled = busy || Number(get('library-select').value) >= 192;
+            get('library-delete').disabled = busy || Number(get('library-select').value) >= 192;
         }
         function libraryCatalog(data, offset)
         {
@@ -2239,11 +2310,11 @@
         }
         function renderLibrary()
         {
-            const visibleSets = librarySets.filter(item => (item.bus || 2) === consoleBus);
+            const visibleSets = librarySets.filter(item => (item.bus || 2) === (uartVisible ? 3 : consoleBus));
             const selection = get('library-select').value;
             get('library-select').replaceChildren();
             const empty = document.createElement('option');
-            empty.value = '128';
+            empty.value = '192';
             setText(empty, 'Новый набор');
             get('library-select').append(empty);
             for (const item of visibleSets)
@@ -2251,12 +2322,12 @@
                 const option = document.createElement('option');
                 option.value = String(item.id);
                 option.setAttribute('data-user-text', '');
-                option.textContent = (item.bus === 1 ? 'I2C' : 'SPI') + ' · ' + item.name;
+                option.textContent = (item.bus === 3 ? 'USART' : item.bus === 1 ? 'I2C' : 'SPI') + ' · ' + item.name;
                 get('library-select').append(option);
             }
             get('library-select').value = visibleSets.some((item) => item.id === selectedSet) ? String(selectedSet) :
-                (visibleSets.some((item) => String(item.id) === selection) ? selection : '128');
-            setText(get('library-status'), 'Наборов: ' + visibleSets.length + ' / 64 · недоступно: ' + ((consoleBus === 2 ? libraryStats.blocked_spi : libraryStats.blocked_i2c) || 0));
+                (visibleSets.some((item) => String(item.id) === selection) ? selection : '192');
+            setText(get('library-status'), 'Наборов: ' + visibleSets.length + ' / 64 · недоступно: ' + ((uartVisible ? libraryStats.blocked_usart : consoleBus === 2 ? libraryStats.blocked_spi : libraryStats.blocked_i2c) || 0));
         }
         let deleteTarget = null;
         function queueLibrary(kind, confirmedId = null)
@@ -2266,7 +2337,7 @@
                 return;
             }
             const id = confirmedId === null ? Number(get('library-select').value) : confirmedId;
-            if (id >= 128 || !Number.isInteger(id))
+            if (id >= 192 || !Number.isInteger(id))
             {
                 return;
             }
@@ -2295,6 +2366,11 @@
         get('library-select').addEventListener('change', libraryButtons);
         function openLibrary(mode)
         {
+            if (uartVisible && (uartWriting || uartTxBusy))
+            {
+                uartMessage('USART занят передачей.', true);
+                return;
+            }
             get('command-library').className = mode === 'delete' ? 'delete-mode' : '';
             get('library-select-row').hidden = mode === 'save';
             get('library-name-row').hidden = mode !== 'save';
@@ -2496,10 +2572,10 @@
             const valid = flash.present && flash.supported;
             const complete = valid && flash.complete;
             get('storage-banks').replaceChildren();
-            for (const bus of ['spi', 'i2c'])
+            for (const bus of ['spi', 'i2c', 'usart'])
             {
                 const row = document.createElement('tr');
-                const bank = flash[bus];
+                const bank = flash[bus] || {used: 0, free: 64, blocked: 0};
                 for (const value of [bus.toUpperCase(),
                     complete ? bank.used + ' / ' + flash.slots + ' · ' + storageBytes(bank.used * flash.slot_bytes) : '—',
                     complete ? bank.free + ' · ' + storageBytes(bank.free * flash.slot_bytes) : '—',
@@ -2517,7 +2593,7 @@
                 ['IP и калибровка · две копии', valid ? storageBytes(flash.system_bytes) : '—'],
                 ['Справка · две копии', valid ? storageBytes(flash.help_bytes) : '—'],
                 ['Не размечено · будущие функции', valid ? storageBytes(flash.unallocated_bytes) : '—'],
-                ['USART / I2S', 'Область пока не выделена'],
+                ['I2S', 'Область пока не выделена'],
                 ['JEDEC ID', flash.jedec],
                 ['Версия записи / размер', flash.record_version + ' / ' + flash.record_bytes + ' B']
             ]);
@@ -3289,16 +3365,28 @@
         }
         function showBus(bus)
         {
+            if (saveBusy || libraryBusy || storeWaiting || uartWriting || uartTxBusy)
+            {
+                return;
+            }
+            if ((bus === 3) !== uartVisible)
+            {
+                const previous = selectedSet;
+                selectedSet = uartSelectedSet;
+                uartSelectedSet = previous;
+            }
             uartVisible = bus === 3;
             get('uart-console').hidden = !uartVisible;
             get('sync-console').hidden = uartVisible;
-            get('bus-library').hidden = uartVisible;
+            get('bus-library').hidden = false;
             get('sync-state').hidden = uartVisible;
             get('bus-usart').setAttribute('aria-pressed', String(uartVisible));
             if (uartVisible)
             {
                 get('bus-spi').setAttribute('aria-pressed', 'false');
                 get('bus-i2c').setAttribute('aria-pressed', 'false');
+                renderLibrary();
+                libraryButtons();
                 pollUart();
             }
             else
@@ -3509,6 +3597,7 @@
                         uartMessage('');
                     }
                 }
+                draftDirty = true;
                 uartCount(i);
             });
         }

@@ -9,7 +9,8 @@
 
 #define FLASH_BYTES 8388608UL
 #define SECTOR_BYTES 4096UL
-#define STORE_BASE (FLASH_BYTES - COMMAND_LIBRARY_TOTAL * 2UL * SECTOR_BYTES)
+#define STORE_BASE 0x00700000UL
+#define UART_STORE_BASE 0x0066E000UL
 #define SPI_STORE_BASE (FLASH_BYTES - COMMAND_LIBRARY_SLOTS * 2UL * SECTOR_BYTES)
 #define STORE_MAGIC 0x34444D43UL
 #define STORE_COMMIT 0xA55AC33CUL
@@ -298,8 +299,28 @@ static bool newer(uint32_t a, uint32_t b)
 
 static uint32_t slot_address(uint32_t id, uint32_t copy)
 {
-    return (id < COMMAND_LIBRARY_SLOTS ? SPI_STORE_BASE : STORE_BASE) +
+    return (id < COMMAND_LIBRARY_SLOTS ? SPI_STORE_BASE :
+            id < 2U * COMMAND_LIBRARY_SLOTS ? STORE_BASE : UART_STORE_BASE) +
            ((id % COMMAND_LIBRARY_SLOTS) * 2U + copy) * SECTOR_BYTES;
+}
+
+/* UART settings use hz=baud, mode=parity, lsb=7-bit, cs_high=two stops,
+ * address=line ending. The v5 record size and existing partitions stay compatible. */
+static bool uart_settings_valid(const store_record_t *record)
+{
+    static const uint32_t rates[] = {300U, 600U, 1200U, 2400U, 4800U, 9600U,
+        19200U, 38400U, 57600U, 115200U, 230400U, 460800U, 500000U, 921600U, 1000000U};
+    size_t i;
+    for (i = 0U; i < sizeof(rates) / sizeof(rates[0]); ++i)
+    {
+        if (record->hz == rates[i])
+        {
+            return record->mode <= 2U && record->lsb <= 1U && record->cs_high <= 1U &&
+                   record->ascii <= 1U && record->address <= 3U &&
+                   (record->lsb == 0U || record->mode != 0U);
+        }
+    }
+    return false;
 }
 
 static bool valid_record(const store_record_t *record)
@@ -312,7 +333,14 @@ static bool valid_record(const store_record_t *record)
     {
         return false;
     }
-    if (record->version >= 3U && record->bus == 1U)
+    if (record->version >= 5U && record->bus == 3U)
+    {
+        if (!uart_settings_valid(record))
+        {
+            return false;
+        }
+    }
+    else if (record->version >= 3U && record->bus == 1U)
     {
         i2c_command_t command = {0};
         command.hz = record->hz;
@@ -405,7 +433,8 @@ static void scan_step(void)
         return;
     }
     if ((candidate.version >= 2U || id == COMMAND_LIBRARY_SLOTS - 1U) &&
-        (id < COMMAND_LIBRARY_SLOTS || (candidate.version >= 3U && candidate.bus == 1U)) &&
+        (id < COMMAND_LIBRARY_SLOTS || (candidate.version >= 3U &&
+         candidate.bus == (id < 2U * COMMAND_LIBRARY_SLOTS ? 1U : 3U))) &&
         valid_record(&candidate))
     {
         normalize(&candidate);
@@ -568,6 +597,7 @@ static bool parse_snapshot(const char *body, size_t size)
     char command_text[1024];
     spi_command_t command;
     i2c_command_t i2c;
+    const bool is_uart = size >= 6U && memcmp(body, "bus=3 ", 6U) == 0;
     const bool is_i2c = size >= 6U && memcmp(body, "bus=1 ", 6U) == 0;
     size_t header = 0U;
     size_t offset;
@@ -583,7 +613,30 @@ static bool parse_snapshot(const char *body, size_t size)
     memcpy(command_text, body, header + 1U);
     memcpy(command_text + header + 1U, "00", 2U);
     memset(&candidate, 0, sizeof(candidate));
-    if (is_i2c)
+    if (is_uart)
+    {
+        unsigned int baud, parity, seven, stops, ascii, eol;
+        int consumed = 0;
+        command_text[header] = '\0';
+        if (sscanf(command_text, "bus=3 baud=%u parity=%u seven=%u stops=%u ascii=%u eol=%u%n",
+                   &baud, &parity, &seven, &stops, &ascii, &eol, &consumed) != 6 ||
+            consumed != (int)header)
+        {
+            return false;
+        }
+        candidate.bus = 3U;
+        candidate.hz = baud;
+        candidate.mode = parity;
+        candidate.lsb = seven;
+        candidate.cs_high = stops;
+        candidate.ascii = ascii;
+        candidate.address = eol;
+        if (!uart_settings_valid(&candidate))
+        {
+            return false;
+        }
+    }
+    else if (is_i2c)
     {
         if (!i2c_command_parse(command_text, header + 1U, &i2c) &&
             !i2c_command_parse(command_text, header + 3U, &i2c))
@@ -646,7 +699,19 @@ static bool parse_snapshot(const char *body, size_t size)
         if (length != 0U)
         {
             memcpy(command_text + header + 1U, body + offset, length);
-            if (is_i2c ? !i2c_command_parse(command_text, header + 1U + length, &i2c)
+            if (is_uart)
+            {
+                const int count = snprintf(command_text, sizeof(command_text),
+                    "bus=2 mode=0 hz=750000 lsb=0 cs_high=0 format=%s\n",
+                    candidate.ascii != 0U ? "ascii" : "hex");
+                const size_t prefix = count > 0 ? (size_t)count : 0U;
+                memcpy(command_text + prefix, body + offset, length);
+                if (prefix == 0U || !spi_stored_command_parse(command_text, prefix + length, &command))
+                {
+                    return false;
+                }
+            }
+            else if (is_i2c ? !i2c_command_parse(command_text, header + 1U + length, &i2c)
                        : !spi_stored_command_parse(command_text, header + 1U + length, &command))
             {
                 return false;
@@ -829,7 +894,8 @@ store_error_t command_library_save(uint32_t id, const char *name, size_t name_si
         return STORE_INVALID;
     }
     {
-        const uint32_t first = candidate.bus == 2U ? 0U : COMMAND_LIBRARY_SLOTS;
+        const uint32_t first = candidate.bus == 2U ? 0U :
+                               candidate.bus == 1U ? COMMAND_LIBRARY_SLOTS : 2U * COMMAND_LIBRARY_SLOTS;
         const uint32_t end = first + COMMAND_LIBRARY_SLOTS;
         if (id != COMMAND_LIBRARY_NEW && (id < first || id >= end))
         {
@@ -921,7 +987,7 @@ static void migration_step(void)
             continue;
         }
         free_id = COMMAND_LIBRARY_NEW;
-        for (target = COMMAND_LIBRARY_SLOTS; target < COMMAND_LIBRARY_TOTAL; ++target)
+        for (target = COMMAND_LIBRARY_SLOTS; target < 2U * COMMAND_LIBRARY_SLOTS; ++target)
         {
             if (catalog[target].kind == 1U && catalog[target].bus == 1U &&
                 catalog[target].name_size == catalog[source].name_size &&
@@ -945,15 +1011,15 @@ static void migration_step(void)
         }
         normalize(&candidate);
         source_sequence = candidate.sequence;
-        if (target < COMMAND_LIBRARY_TOTAL &&
+        if (target < 2U * COMMAND_LIBRARY_SLOTS &&
             !newer(catalog[source].sequence, catalog[target].sequence))
         {
             candidate.deleted = 1U;
             begin_write(source);
         }
-        else if (target < COMMAND_LIBRARY_TOTAL || free_id < COMMAND_LIBRARY_TOTAL)
+        else if (target < 2U * COMMAND_LIBRARY_SLOTS || free_id < COMMAND_LIBRARY_TOTAL)
         {
-            begin_write(target < COMMAND_LIBRARY_TOTAL ? target : free_id);
+            begin_write(target < 2U * COMMAND_LIBRARY_SLOTS ? target : free_id);
             candidate.sequence = source_sequence;
             candidate.crc = record_crc(&candidate);
         }
@@ -1238,8 +1304,8 @@ static void put_string(json_writer_t *writer, const char *text, size_t size)
 
 size_t command_storage_json(char *json, size_t capacity)
 {
-    uint32_t used[2] = {0U, 0U};
-    uint32_t blocked[2] = {0U, 0U};
+    uint32_t used[3] = {0U, 0U, 0U};
+    uint32_t blocked[3] = {0U, 0U, 0U};
     uint32_t i;
     int count;
     for (i = 0U; i < COMMAND_LIBRARY_TOTAL; ++i)
@@ -1257,19 +1323,21 @@ size_t command_storage_json(char *json, size_t capacity)
         "\"record_version\":5,\"record_bytes\":%lu,"
         "\"jedec\":\"%02X%02X%02X\","
         "\"spi\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu},"
-        "\"i2c\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu}}",
+        "\"i2c\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu},\"usart\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu}}",
         present ? "true" : "false", supported_flash() ? "true" : "false",
         ready && !scanning && !migrating ? "true" : "false",
         (job != JOB_IDLE || external_lock) ? "true" : "false",
         (unsigned long)(supported_flash() ? FLASH_BYTES : 0U), (unsigned long)SECTOR_BYTES,
         (unsigned long)(2U * SECTOR_BYTES),
         (unsigned long)(COMMAND_LIBRARY_SLOTS * 2U * SECTOR_BYTES), COMMAND_LIBRARY_SLOTS,
-        (unsigned long)(2U * SECTOR_BYTES), (unsigned long)FLASH_HELP_BASE,
+        (unsigned long)(2U * SECTOR_BYTES), (unsigned long)UART_STORE_BASE,
         (unsigned long)FLASH_HELP_BYTES, (unsigned long)system_current.sequence,
         (unsigned long)sizeof(store_record_t), (unsigned int)jedec[0], (unsigned int)jedec[1],
         (unsigned int)jedec[2], (unsigned long)used[0], (unsigned long)blocked[0],
         (unsigned long)(COMMAND_LIBRARY_SLOTS - used[0] - blocked[0]), (unsigned long)used[1],
-        (unsigned long)blocked[1], (unsigned long)(COMMAND_LIBRARY_SLOTS - used[1] - blocked[1]));
+        (unsigned long)blocked[1], (unsigned long)(COMMAND_LIBRARY_SLOTS - used[1] - blocked[1]),
+        (unsigned long)used[2], (unsigned long)blocked[2],
+        (unsigned long)(COMMAND_LIBRARY_SLOTS - used[2] - blocked[2]));
     return count > 0 && (size_t)count < capacity ? (size_t)count : 0U;
 }
 
@@ -1393,7 +1461,14 @@ size_t command_library_json(char *json, size_t capacity, uint32_t offset)
     put_uint(&writer, blocked);
     put_text(&writer, ",\"blocked_i2c\":");
     blocked = 0U;
-    for (i = COMMAND_LIBRARY_SLOTS; i < COMMAND_LIBRARY_TOTAL; ++i)
+    for (i = COMMAND_LIBRARY_SLOTS; i < 2U * COMMAND_LIBRARY_SLOTS; ++i)
+    {
+        blocked += catalog[i].kind == 3U ? 1U : 0U;
+    }
+    put_uint(&writer, blocked);
+    put_text(&writer, ",\"blocked_usart\":");
+    blocked = 0U;
+    for (i = 2U * COMMAND_LIBRARY_SLOTS; i < COMMAND_LIBRARY_TOTAL; ++i)
     {
         blocked += catalog[i].kind == 3U ? 1U : 0U;
     }

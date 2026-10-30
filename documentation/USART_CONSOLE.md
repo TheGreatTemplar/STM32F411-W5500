@@ -111,3 +111,9 @@ DMA mapping, TX busy и TC, independent cursors, оборачивание буф
 Это программная модель регистров, а не подтверждение осциллограммы на плате.
 
 [STM32F411 RM0383: USART и DMA mapping](https://www.st.com/resource/en/reference_manual/dm00119316-stm32f411xce-advanced-armbased-32bit-mcus-stmicroelectronics.pdf).
+
+## Библиотека USART (v0.4.2)
+
+64 набора, идентификаторы 128…191; значение 192 означает новый набор для всех шин. Каждый набор содержит четыре сообщения, скорость, биты данных, чётность, стоп-биты, HEX/ASCII и CR/LF/CRLF. Загрузка применяет конфигурацию без отправки. Общий RX-журнал не сохраняется.
+
+W25Q64JV: 0x66E000…0x6EDFFF, две копии по 4 КиБ с CRC и последним маркером commit на слот. Формат v5 сохраняет прежний размер: bus=3, hz=baud, mode=parity, lsb=(bits==7), cs_high=(stop==2), address=EOL. SPI/I2C и служебные области не перемещаются.

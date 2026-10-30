@@ -311,7 +311,7 @@ print('HTTP Help: external streaming/busy resume, gzip negotiation, CSP and byte
 
 
 uc, symbols = load_image(root / "build/store_test.axf")
-result = call(uc, symbols["test_entry"], timeout=120000000, count=1500000000)
+result = call(uc, symbols["test_entry"], timeout=300000000, count=3000000000)
 assert result == 0, f"Flash journal mock failed at C source line {result}"
 print("W25Q64JV: independent 64+64 banks, UTF-8, full quotas, v1/v2 compatibility, interrupted I2C migration before/after commit, latest-set preservation, CRC and foreign-data protection passed")
 
@@ -444,3 +444,4 @@ call(uc, symbols['rtc_poll'])
 assert call(uc, symbols['rtc_calibration_error']) == 2
 assert call(uc, symbols['rtc_calibration_pending']) == 0
 print('RTC calibration: signed limits, CALP/CALM, 32 s window, calendar preservation and nonblocking RECALPF timeout passed')
+

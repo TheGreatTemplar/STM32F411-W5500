@@ -299,14 +299,14 @@ const context = vm.createContext({
                 const parts = options.body.slice(0, first).split(' ');
                 const name = new TextDecoder().decode(bytes.slice(first + 1, first + 1 + Number(parts[2])));
                 let id = Number(parts[1]);
-                const requestedBus = options.body.includes('\nbus=1 ') ? 1 : 2;
+                const requestedBus = options.body.includes('\nbus=3 ') ? 3 : options.body.includes('\nbus=1 ') ? 1 : 2;
                 if ([...libraryRecords].some(([key, item]) => key !== id && (item.settings.bus || 2) === requestedBus && item.name === name))
                 {
                     return {ok: false, json: async () => ({error: 12})};
                 }
-                if (id === 128)
+                if (id === 192)
                 {
-                    id = options.body.includes('\nbus=1 ') ? 64 : 0;
+                    id = requestedBus === 3 ? 128 : requestedBus === 1 ? 64 : 0;
                     while (libraryRecords.has(id))
                     {
                         ++id;
@@ -315,7 +315,7 @@ const context = vm.createContext({
                 const snapshot = new TextDecoder().decode(bytes.slice(first + Number(parts[2]) + 2));
                 const [header, lengths] = snapshot.split('\n');
                 const fields = Object.fromEntries(header.split(' ').map(item => item.split('=')));
-                const settings = fields.bus === '1' ? {bus: 1, hz: Number(fields.hz), address: Number(fields.addr), operation: Number(fields.op), read_size: Number(fields.read), format: fields.format} :
+                const settings = fields.bus === '3' ? {bus: 3, hz: Number(fields.baud), mode: Number(fields.parity), lsb: Number(fields.seven), cs_high: Number(fields.stops), address: Number(fields.eol), format: fields.ascii === '1' ? 'ascii' : 'hex'} : fields.bus === '1' ? {bus: 1, hz: Number(fields.hz), address: Number(fields.addr), operation: Number(fields.op), read_size: Number(fields.read), format: fields.format} :
                     {bus: 2, mode: Number(fields.mode), hz: Number(fields.hz), lsb: Number(fields.lsb), cs_high: Number(fields.cs_high), format: fields.format};
                 let payload = snapshot.slice(header.length + lengths.length + 2);
                 const commands = lengths.slice(8).split(',').map(length =>
@@ -349,7 +349,7 @@ const context = vm.createContext({
                 libraryRecords.delete(id);
                 if (saved.id === id)
                 {
-                    Object.assign(saved, {id: 128, name: '', has_saved: false});
+                    Object.assign(saved, {id: 192, name: '', has_saved: false});
                 }
                 flashBusy = true;
                 return {ok: true, json: async () => ({...saved, busy: true})};
@@ -494,7 +494,7 @@ async function test()
     await vm.runInContext('Promise.resolve()', context);
     assert.equal(elements.get('mcu-diagnostics').open, true);
     await vm.runInContext('loadMcu()', context);
-    assert.equal(elements.get('storage-banks').children.length, 2);
+    assert.equal(elements.get('storage-banks').children.length, 3);
     assert.match(elements.get('storage-banks').children[0].children[1].textContent, /2 \/ 64/);
     assert.match(elements.get('storage-banks').children[0].children[2].textContent, /^61/);
     assert.match(elements.get('storage-banks').children[0].children[3].textContent, /^1/);
@@ -846,7 +846,7 @@ async function test()
     elements.get('library-name').input();
     elements.get('library-new').click();
     await vm.runInContext('update()', context);
-    assert.match(requests.at(-1).options.body, /^save 128 96\n/);
+    assert.match(requests.at(-1).options.body, /^save 192 96\n/);
     vm.runInContext('nextStorePoll = 0', context);
     await vm.runInContext('update()', context);
     for (let i = 0; i < 16; ++i)
@@ -1121,7 +1121,7 @@ async function test()
     elements.get('bus-usart').click();
     await new Promise(setImmediate);
     assert.equal(elements.get('sync-console').hidden,true);
-    assert.equal(elements.get('bus-library').hidden,true);
+    assert.equal(elements.get('bus-library').hidden,false);
     assert.equal(elements.get('uart-console').hidden,false);
     elements.get('uart-baud').value = '115200';
     elements.get('uart-bits').value = '8';
@@ -1200,6 +1200,24 @@ async function test()
     assert.equal(elements.get('uart-console').hidden,true);
     assert.equal(elements.get('sync-console').hidden,false);
     assert.equal(elements.get('bus-library').hidden,false);
+    elements.get('bus-usart').click();
+    await new Promise(setImmediate);
+    elements.get('library-name').value = 'UART bench';
+    const uartMessages = ['55 AA', '01 02', 'FF', '00'];
+    for (let i = 0; i < 4; ++i)
+    {
+        elements.get(i === 0 ? 'uart-command' : 'uart-command-' + i).value = uartMessages[i];
+    }
+    await vm.runInContext('queueSave(true); update()', context);
+    assert.match(requests.findLast(item => item.options?.body?.startsWith('save ')).options.body, /bus=3 baud=/);
+    await vm.runInContext('update(); update()', context);
+    assert.equal(saved.settings.bus, 3);
+    assert.deepEqual(saved.commands, uartMessages);
+    assert.ok(saved.id >= 128 && saved.id < 192);
+    await vm.runInContext('draftDirty = false; showStore(' + JSON.stringify(saved) + ', true)', context);
+    await new Promise(setImmediate);
+    assert.equal(elements.get('uart-command-3').value, '00');
+    assert.equal(elements.get('uart-console').hidden, false);
     console.log('Web UI: SPI/I2C, USART DMA terminal/loopback/no retry, library, queue, RTC, Flash and About passed');
 }
 
