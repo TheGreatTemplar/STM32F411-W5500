@@ -240,6 +240,12 @@ const context = vm.createContext({
             else
             {
                 uartState.enabled = options.body.startsWith('start');
+                if (uartState.enabled)
+                {
+                    const match = options.body.match(/^start baud=(\d+) bits=(\d+) parity=(\d+) stop=(\d+)\n$/);
+                    assert.ok(match);
+                    [uartState.baud,uartState.bits,uartState.parity,uartState.stop] = match.slice(1).map(Number);
+                }
             }
             return {ok:true,json:async()=>({error:0})};
         }
@@ -1100,6 +1106,32 @@ async function test()
     await vm.runInContext("controlUart('start')",context);
     await new Promise(setImmediate);
     assert.equal(uartState.enabled,true);
+    vm.runInContext('uartTxBusy = true; uartButtons()', context);
+    for (const id of ['baud','bits','parity','stop'])
+    {
+        assert.equal(elements.get('uart-' + id).disabled,true);
+    }
+    const beforeBusyConfig = requests.filter(r=>r.url==='/api/usart').length;
+    await vm.runInContext("controlUart('start')",context);
+    assert.equal(requests.filter(r=>r.url==='/api/usart').length,beforeBusyConfig);
+    vm.runInContext('uartTxBusy = false; uartButtons()', context);
+    assert.equal(elements.get('uart-baud').disabled,false);
+    elements.get('uart-baud').value = '9600';
+    elements.get('uart-baud').change();
+    await new Promise(setImmediate);
+    assert.equal(uartState.baud,9600);
+    for (const [id,value] of [['bits','7'],['parity','1'],['stop','2']])
+    {
+        elements.get('uart-' + id).value = value;
+        elements.get('uart-' + id).change();
+        await new Promise(setImmediate);
+    }
+    assert.equal(uartState.bits,7);
+    assert.equal(uartState.parity,1);
+    assert.equal(uartState.stop,2);
+    elements.get('uart-bits').value = '8';
+    elements.get('uart-bits').change();
+    await new Promise(setImmediate);
     await vm.runInContext("controlUart('tx')",context);
     await new Promise(setImmediate);
     assert.equal(uartWire,'55AA0D0A');

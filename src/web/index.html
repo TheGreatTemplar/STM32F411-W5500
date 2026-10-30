@@ -321,7 +321,7 @@
                     <label>Биты данных<select id="uart-bits"><option selected>8</option><option>7</option></select></label>
                     <label>Чётность<select id="uart-parity"><option value="0">None</option><option value="1">Odd</option><option value="2">Even</option></select></label>
                     <label>Стоп-биты<select id="uart-stop"><option>1</option><option>2</option></select></label>
-                    <button type="button" id="uart-start">Включить / применить</button><button type="button" id="uart-off">Отключить USART</button>
+                    <button type="button" id="uart-start">Включить USART</button><button type="button" id="uart-off">Отключить USART</button>
                 </div>
                 <p class="hint">USART, SPI и I2C используют постоянные частоты и могут работать без отключения USART. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.</p>
                 <p id="uart-state" role="status">Ожидание данных…</p>
@@ -513,7 +513,7 @@
             "Биты данных": "Data bits",
             "Чётность": "Parity",
             "Стоп-биты": "Stop bits",
-            "Включить / применить": "Enable / apply",
+            "Включить USART": "Enable USART",
             "Отключить USART": "Disable USART",
             "Окончание строки": "Line ending",
             "Очистить журнал": "Clear log",
@@ -870,7 +870,7 @@
             "Биты данных": "データビット",
             "Чётность": "パリティ",
             "Стоп-биты": "ストップビット",
-            "Включить / применить": "有効化 / 適用",
+            "Включить USART": "USART 有効化",
             "Отключить USART": "USARTを無効化",
             "Окончание строки": "行末",
             "Очистить журнал": "ログを消去",
@@ -2976,7 +2976,11 @@
         }
         function uartButtons()
         {
-            get('uart-start').disabled = uartWriting || uartTxBusy;
+            for (const id of ['baud', 'bits', 'parity', 'stop'])
+            {
+                get('uart-' + id).disabled = uartWriting || uartTxBusy || !uartConfigLoaded;
+            }
+            get('uart-start').disabled = uartWriting || uartTxBusy || !uartConfigLoaded;
             get('uart-off').disabled = uartWriting || uartTxBusy;
             get('uart-send').disabled = uartWriting || uartTxBusy || !uartDeviceEnabled;
         }
@@ -3126,7 +3130,7 @@
         }
         async function controlUart(kind)
         {
-            if (uartWriting)
+            if (uartWriting || uartTxBusy)
             {
                 return;
             }
@@ -3180,6 +3184,10 @@
                 uartButtons();
                 pollUart();
             }
+        }
+        for (const id of ['baud', 'bits', 'parity', 'stop'])
+        {
+            get('uart-' + id).addEventListener('change', () => controlUart('start'));
         }
         get('uart-start').addEventListener('click', () => controlUart('start'));
         get('uart-off').addEventListener('click', () => controlUart('stop'));
