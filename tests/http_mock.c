@@ -1,5 +1,7 @@
 #include "command_store.h"
 #include "config.h"
+#include "help_seed.h"
+#include "help_store.h"
 #include "http.h"
 #include "i2c_console.h"
 #include "rtc.h"
@@ -9,6 +11,36 @@
 #include <stdio.h>
 #include <string.h>
 
+static bool help_available = true;
+static uint32_t help_busy_reads;
+char captured_help[32768];
+uint32_t captured_help_size;
+bool help_store_ready(void)
+{
+    return help_available;
+}
+size_t help_store_size(void)
+{
+    return sizeof(help_seed);
+}
+store_error_t help_store_error(void)
+{
+    return STORE_BUSY;
+}
+store_error_t help_store_read(size_t offset, void *data, size_t size)
+{
+    if (help_busy_reads != 0U)
+    {
+        --help_busy_reads;
+        return STORE_BUSY;
+    }
+    if (offset > sizeof(help_seed) || size > sizeof(help_seed) - offset)
+    {
+        return STORE_INVALID;
+    }
+    memcpy(data, help_seed + offset, size);
+    return STORE_OK;
+}
 static uint32_t now;
 bool usart_enabled(void)
 {
@@ -476,6 +508,28 @@ int test_entry(void)
     CHECK(output_size < sizeof(captured_page));
     memcpy(captured_page, output, output_size);
     captured_page_size = (uint32_t)output_size;
+    prepare("GET /help?lang=ru HTTP/1.1\r\nAccept-Encoding: gzip\r\n\r\n");
+    help_busy_reads = 2U;
+    pump(&adc);
+    CHECK(strstr(output, "200 OK") != NULL);
+    CHECK(strstr(output, "Content-Encoding: gzip") != NULL);
+    CHECK(strstr(output, "img-src 'self' data:") != NULL);
+    CHECK(framing_ok());
+    CHECK(output_size < sizeof(captured_help));
+    memcpy(captured_help, output, output_size);
+    captured_help_size = (uint32_t)output_size;
+    prepare("GET /help?lang=en HTTP/1.1\r\nAccept-Encoding: identity\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "406 Not Acceptable") != NULL && framing_ok());
+    help_available = false;
+    prepare("GET /help?lang=ja HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "503 Service Unavailable") != NULL && framing_ok());
+    help_available = true;
+    prepare("POST /help HTTP/1.1\r\n\r\n");
+    pump(&adc);
+    CHECK(strstr(output, "405 Method Not Allowed") != NULL && framing_ok());
+
     prepare("GET / HTTP/1.1\r\nAccept-Encoding: identity\r\n\r\n");
     pump(&adc);
     CHECK(strstr(output, "406 Not Acceptable") != NULL);

@@ -416,6 +416,26 @@
               <FilePath>.\src\board.c</FilePath>
             </File>
             <File>
+              <FileName>help_store.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\help_store.c</FilePath>
+            </File>
+            <File>
+              <FileName>help_store.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\help_store.h</FilePath>
+            </File>
+            <File>
+              <FileName>help_seed.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\help_seed.h</FilePath>
+            </File>
+            <File>
+              <FileName>flash_layout.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\src\flash_layout.h</FilePath>
+            </File>
+            <File>
               <FileName>clock.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\src\clock.c</FilePath>

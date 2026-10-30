@@ -222,10 +222,17 @@ int test_entry(void)
     CHECK(command_storage_json(json, sizeof(json)) != 0U);
     CHECK(strstr(json, "\"complete\":true") != NULL);
     CHECK(strstr(json, "\"capacity\":8388608") != NULL);
-    CHECK(strstr(json, "\"unallocated_bytes\":7331840") != NULL);
+    CHECK(strstr(json, "\"unallocated_bytes\":7266304") != NULL);
     CHECK(strstr(json, "\"spi\":{\"used\":0,\"blocked\":0,\"free\":64}") != NULL);
     CHECK(strstr(json, "\"i2c\":{\"used\":0,\"blocked\":0,\"free\":64}") != NULL);
+    CHECK(strstr(json, "\"help_bytes\":65536") != NULL);
     CHECK(command_storage_json(json, 8U) == 0U);
+    CHECK(command_flash_claim() == STORE_OK);
+    CHECK(command_flash_claim() == STORE_BUSY);
+    CHECK(command_store_save(a, sizeof(a) - 1U) == STORE_BUSY);
+    command_store_poll();
+    CHECK(writes == 0U);
+    command_flash_release();
     CHECK(command_store_save(invalid, sizeof(invalid) - 1U) == STORE_INVALID);
     CHECK(writes == 0U);
     CHECK(command_store_save(a, sizeof(a) - 1U) == STORE_OK);

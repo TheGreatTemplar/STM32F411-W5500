@@ -31,6 +31,10 @@ typedef enum
     STORE_EXISTS
 } store_error_t;
 
+/* Cooperative ownership of the single physical NOR chip. */
+store_error_t command_flash_claim(void);
+void command_flash_release(void);
+
 void command_store_init(void);
 void command_store_poll(void);
 store_error_t command_store_save(const char *body, size_t size);

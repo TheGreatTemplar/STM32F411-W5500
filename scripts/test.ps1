@@ -53,6 +53,26 @@ try
     {
         throw 'Flash mock link failed'
     }
+    & (Join-Path $Toolchain 'armclang.exe') --target=arm-arm-none-eabi -mcpu=cortex-m4 `
+        -mthumb -mfloat-abi=soft -std=c99 -Oz -g -Wall -Wextra -Werror -DSTM32F411xE `
+        -D__MICROLIB -Isrc -Ithird_party/CMSIS/Core/Include -Ithird_party/STM32F4/Include `
+        -c tests/help_mock.c -o build/help_mock.o
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'Help mock compilation failed'
+    }
+    & (Join-Path $Toolchain 'armlink.exe') --cpu Cortex-M4 --library_type=microlib `
+        --entry test_entry --ro-base 0x08000000 --rw-base 0x20000000 `
+        --output build/help_test.axf build/help_mock.o build/help_store.o
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'Help mock link failed'
+    }
+    & $Python tests/help_arm.py
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'Help NOR tests failed'
+    }
     & $Python tests/run_arm_tests.py
     if ($LASTEXITCODE -ne 0)
     {

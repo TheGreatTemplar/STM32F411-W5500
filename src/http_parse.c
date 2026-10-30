@@ -263,6 +263,13 @@ http_route_t http_parse(const char *request, size_t size)
         return HTTP_BAD_REQUEST;
     }
     path_size = (size_t)(version - path);
+    if ((path_size == 5U && memcmp(path, "/help", 5U) == 0) ||
+        (path_size == 13U && memcmp(path, "/help?lang=", 11U) == 0 &&
+         (memcmp(path + 11U, "ru", 2U) == 0 || memcmp(path + 11U, "en", 2U) == 0 ||
+          memcmp(path + 11U, "ja", 2U) == 0)))
+    {
+        return post ? HTTP_METHOD_NOT_ALLOWED : HTTP_HELP;
+    }
     if (!post && path_size >= 16U && memcmp(path, "/api/usart?from=", 16U) == 0)
     {
         size_t p;

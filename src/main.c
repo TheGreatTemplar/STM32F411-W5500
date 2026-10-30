@@ -1,6 +1,7 @@
 #include "board.h"
 #include "command_store.h"
 #include "config.h"
+#include "help_store.h"
 #include "http.h"
 #include "rtc.h"
 #include "usart_console.h"
@@ -26,6 +27,7 @@ int main(void)
     }
     usart_init();
     command_store_init();
+    help_store_init();
     command_system_get(&settings, &settings_sequence, &settings_busy, &settings_error);
     bench_settings_activate(&settings);
     rtc_init();
@@ -90,6 +92,7 @@ int main(void)
             network_ready = w5500_init();
         }
         command_store_poll();
+        help_store_poll();
         __WFI();
     }
 }

@@ -6,6 +6,12 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../src/web/index.html'), 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\n\s*update\(\);\s*$/, '');
 assert.ok(!html.includes('id="uart-start"') && !html.includes('id="uart-off"'));
+// Static element references must really exist; auto-created test elements must not mask missing markup.
+const staticIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]));
+for (const match of source.matchAll(/\bget\('([^']+)'\)/g))
+{
+    assert.ok(staticIds.has(match[1]), 'Missing HTML element: ' + match[1]);
+}
 const elements = new Map();
 const requests = [];
 const timers = new Map();
@@ -27,6 +33,7 @@ let pagedCatalog = false;
 let ledOn = false;
 let failCommand = false;
 let adcOk = true;
+let failAdc = false;
 let failDiagnostics = false;
 let failMcu = false;
 const mcuData = {firmware: {version: '0.1.0', build_utc: '2026-10-29T12:00:00Z',
@@ -34,7 +41,7 @@ const mcuData = {firmware: {version: '0.1.0', build_utc: '2026-10-29T12:00:00Z',
     web_crc32: '12345678', compiler: 'ArmClang 6190000', c_standard: 'C99 / CMSIS'},
     storage: {present: true, supported: true, complete: true, busy: false, capacity: 8388608,
         slot_bytes: 8192, bank_bytes: 524288, slots: 64, system_bytes: 8192,
-        unallocated_bytes: 7331840, jedec: 'EF4017', record_version: 5, record_bytes: 4068,
+        help_bytes: 65536, unallocated_bytes: 7266304, jedec: 'EF4017', record_version: 5, record_bytes: 4068,
         spi: {used: 2, free: 61, blocked: 1}, i2c: {used: 1, free: 63, blocked: 0}}};
 let failSpi = false;
 let failSpiTransport = false;
@@ -431,6 +438,10 @@ const context = vm.createContext({
             return {ok: true, json: async () => ({led_on: ledOn})};
         }
         assert.equal(url, '/api/adc');
+        if (failAdc)
+        {
+            throw new Error('Network failure');
+        }
         if (holdAdc)
         {
             await holdAdc;
@@ -559,6 +570,11 @@ async function test()
     await vm.runInContext('update()', context);
     assert.equal(elements.get('led-on').disabled, false);
 
+    failAdc = true;
+    await vm.runInContext('update()', context);
+    assert.equal(elements.get('status').textContent, 'Нет связи');
+    failAdc = false;
+    await vm.runInContext('update()', context);
     adcOk = false;
     await vm.runInContext('update()', context);
     assert.equal(elements.get('led-state').textContent, 'Выключен');
@@ -797,6 +813,8 @@ async function test()
     elements.get('lang-en').click();
     assert.equal(context.document.documentElement.lang, 'en');
     assert.equal(context.document.title, 'STM32F411 Monitor');
+    assert.equal(elements.get('help-open').getAttribute('href'),'/help?lang=en');
+    assert.match(elements.get('uart-baud').getAttribute('title'),/calculated baud/);
     assert.equal(browserStorage.get('stm32f411-language'), 'en');
     assert.equal(elements.get('spi-send-label-0').textContent, 'Send');
     assert.match(elements.get('spi-message-0').textContent, /sent 4 bytes/);
@@ -811,6 +829,7 @@ async function test()
     elements.get('lang-ja').click();
     assert.equal(context.document.documentElement.lang, 'ja');
     assert.equal(context.document.title, 'STM32F411 モニター');
+    assert.equal(elements.get('help-open').getAttribute('href'),'/help?lang=ja');
     assert.equal(elements.get('spi-send-label-0').textContent, '送信');
     assert.match(elements.get('spi-message-0').textContent, /送信済み/);
     assert.equal(elements.get('library-select').children[1].textContent, 'SPI · Default');
@@ -1116,6 +1135,10 @@ async function test()
     {
         assert.equal(elements.get('uart-' + id).disabled,true);
     }
+    for (const suffix of ['', '-1', '-2', '-3'])
+    {
+        assert.equal(elements.get('uart-send' + suffix).disabled,true);
+    }
     const beforeBusyConfig = requests.filter(r=>r.url==='/api/usart').length;
     await vm.runInContext("controlUart('start')",context);
     assert.equal(requests.filter(r=>r.url==='/api/usart').length,beforeBusyConfig);
@@ -1141,6 +1164,26 @@ async function test()
     await new Promise(setImmediate);
     assert.equal(uartWire,'55AA0D0A');
     assert.match(elements.get('uart-rx').value,/55 AA 0D 0A/);
+    for (let i = 1; i < 4; ++i)
+    {
+        const text = ['','AA','BB CC','01 02 03'][i];
+        elements.get('uart-command-' + i).value = text.toLowerCase();
+        elements.get('uart-command-' + i).input();
+        assert.equal(elements.get('uart-command-' + i).value,text);
+        assert.equal(elements.get('uart-count-' + i).textContent,(i+2)+' Б');
+        await vm.runInContext("controlUart('tx',"+i+")",context);
+        await new Promise(setImmediate);
+    }
+    assert.equal(uartWire,'55AA0D0AAA0D0ABBCC0D0A0102030D0A');
+    elements.get('uart-command-1').value = 'GG';
+    elements.get('uart-command-1').input();
+    assert.equal(elements.get('uart-command-1').value,'AA');
+    assert.equal(elements.get('uart-command-2').value,'BB CC');
+    const rxTotalBeforeClear = uartState.rx_total;
+    elements.get('uart-clear').click();
+    assert.equal(elements.get('uart-rx').value,'');
+    assert.equal(uartState.rx_total,rxTotalBeforeClear);
+
     elements.get('uart-command').value = 'GZ';
     const uartWrites = requests.filter(r=>r.url==='/api/usart').length;
     await vm.runInContext("controlUart('tx')",context);

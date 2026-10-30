@@ -27,3 +27,6 @@ USART и SPI2 работают при постоянных APB2/APB1; блоки
 
 `clock.c` — HSE 25 МГц, PLL 96 МГц, постоянные APB1/APB2, CSS/NMI.
 [План частот](../documentation/CLOCKS.md).
+
+`help_store.c` — установка/CRC/две копии справки в NOR, `flash_layout.h` — её резерв.
+HTTP /help читает внешнюю Flash порциями, не копируя весь документ в RAM.

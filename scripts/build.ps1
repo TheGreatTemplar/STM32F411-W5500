@@ -14,7 +14,7 @@ try
     $assembler = Join-Path $Toolchain 'armasm.exe'
     $linker = Join-Path $Toolchain 'armlink.exe'
     $converter = Join-Path $Toolchain 'fromelf.exe'
-    $sources = @('clock', 'board', 'w5500', 'spi_console', 'i2c_console', 'board_i2c', 'usart_console', 'command_store', 'settings', 'rtc', 'http_parse', 'http', 'main')
+    $sources = @('clock', 'board', 'w5500', 'spi_console', 'i2c_console', 'board_i2c', 'usart_console', 'command_store', 'help_store', 'settings', 'rtc', 'http_parse', 'http', 'main')
     $objects = @()
     foreach ($source in $sources)
     {

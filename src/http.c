@@ -3,6 +3,7 @@
 #include "build_info.h"
 #include "command_store.h"
 #include "config.h"
+#include "help_store.h"
 #include "i2c_console.h"
 #include "rtc.h"
 #include "spi_console.h"
@@ -30,6 +31,7 @@ typedef struct
     bool closing;
     bool queued;
     bool waiting_tx;
+    uint32_t external_body;
 } http_client_t;
 
 static http_client_t clients[APP_HTTP_SOCKETS];
@@ -65,14 +67,20 @@ static bool response(http_client_t *client, unsigned int status, const char *rea
                  "Connection: close\r\nCache-Control: no-store\r\n"
                  "X-Content-Type-Options: nosniff\r\n"
                  "Content-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; "
-                 "style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'\r\n"
+                 "style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
+                 "frame-ancestors 'none'\r\n"
                  "%s\r\n",
                  status, reason, type, (unsigned long)size, extra_headers);
     if ((count <= 0) || ((size_t)count >= sizeof(client->header)))
     {
         return false;
     }
-    if (body == web_page)
+    client->external_body = body == NULL;
+    if (body == NULL)
+    {
+        client->reply_body = NULL;
+    }
+    else if (body == web_page)
     {
         client->reply_body = web_page;
     }
@@ -636,6 +644,30 @@ static bool dispatch(http_client_t *client, http_route_t route, const adc_snapsh
 {
     switch (route)
     {
+    case HTTP_HELP:
+        if (!help_store_ready())
+        {
+            char message[256];
+            const store_error_t error = help_store_error();
+            const int length =
+                snprintf(message, sizeof(message),
+                         "Help is not ready (Flash status %u). Wait for Flash "
+                         "scanning/installation, then reload.\n"
+                         "Справка пока недоступна. Дождись подготовки Flash и обнови страницу.\n",
+                         (unsigned int)error);
+            return length > 0 && (size_t)length < sizeof(message) &&
+                   response(client, 503U, "Service Unavailable", "text/plain; charset=utf-8",
+                            message, (size_t)length,
+                            error == STORE_BUSY ? "Retry-After: 2\r\nRefresh: 2\r\n"
+                                                             : "");
+        }
+        if (!http_accepts_gzip(client->request, client->used))
+        {
+            return response(client, 406U, "Not Acceptable", "text/plain", "Help requires gzip.\n",
+                            20U, "Vary: Accept-Encoding\r\n");
+        }
+        return response(client, 200U, "OK", "text/html; charset=utf-8", NULL, help_store_size(),
+                        "Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n");
     case HTTP_USART:
         return usart_response(client, false);
     case HTTP_USART_CONTROL:
@@ -741,11 +773,29 @@ static void transmit_step(uint8_t socket, http_client_t *client)
     }
     else
     {
-        data = client->reply_body + client->body_offset;
         size = client->reply_size - client->body_offset;
         if (size > 1024U)
         {
             size = 1024U;
+        }
+        if (client->external_body)
+        {
+            const store_error_t error = help_store_read(client->body_offset, client->body, size);
+            if (error == STORE_BUSY)
+            {
+                return; /* A preset write owns NOR; resume this socket when it finishes. */
+            }
+            if (error != STORE_OK)
+            {
+                w5500_close(socket);
+                reset_client(client);
+                return;
+            }
+            data = client->body;
+        }
+        else
+        {
+            data = client->reply_body + client->body_offset;
         }
     }
     result = w5500_send_start(socket, data, size);

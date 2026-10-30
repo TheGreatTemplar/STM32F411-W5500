@@ -1,6 +1,7 @@
 #include "command_store.h"
 #include "board.h"
 #include "clock.h"
+#include "flash_layout.h"
 #include "i2c_console.h"
 #include "spi_console.h"
 #include <stdio.h>
@@ -14,6 +15,9 @@
 #define STORE_COMMIT 0xA55AC33CUL
 #define SYSTEM_BASE (STORE_BASE - 2UL * SECTOR_BYTES)
 #define SYSTEM_MAGIC 0x31535953UL
+
+typedef char
+    help_partition_before_system[(FLASH_HELP_BASE + FLASH_HELP_BYTES == SYSTEM_BASE) ? 1 : -1];
 
 typedef struct
 {
@@ -97,6 +101,7 @@ typedef char system_record_must_be_44[(sizeof(system_record_t) == 44U) ? 1 : -1]
 static system_record_t system_current;
 static bool system_reusable[2];
 static bool system_job;
+static bool external_lock;
 static uint32_t system_copy;
 static store_error_t system_error;
 static size_t job_bytes;
@@ -507,6 +512,7 @@ void command_store_init(void)
     scan_sector = 0U;
     scan_offset = 0U;
     memset(jedec, 0, sizeof(jedec));
+    external_lock = false;
     present = false;
     ready = false;
     has_saved = false;
@@ -691,7 +697,7 @@ static bool parse_snapshot(const char *body, size_t size)
 
 static store_error_t available(void)
 {
-    if (job != JOB_IDLE || scanning || migrating)
+    if (job != JOB_IDLE || scanning || migrating || external_lock)
     {
         return STORE_BUSY;
     }
@@ -726,7 +732,7 @@ void command_system_get(bench_settings_t *settings, uint32_t *sequence, bool *bu
 {
     *settings = system_current.settings;
     *sequence = system_current.sequence;
-    *busy = job != JOB_IDLE || scanning || migrating;
+    *busy = job != JOB_IDLE || scanning || migrating || external_lock;
     *error = system_error;
 }
 
@@ -1000,6 +1006,10 @@ void command_store_poll(void)
 {
     uint8_t value;
     uint8_t bytes[256];
+    if (external_lock)
+    {
+        return;
+    }
     if (scanning)
     {
         scan_step();
@@ -1243,20 +1253,21 @@ size_t command_storage_json(char *json, size_t capacity)
         "{\"present\":%s,\"supported\":%s,\"complete\":%s,\"busy\":%s,"
         "\"capacity\":%lu,\"sector_bytes\":%lu,\"slot_bytes\":%lu,"
         "\"bank_bytes\":%lu,\"slots\":%u,\"system_bytes\":%lu,"
-        "\"unallocated_bytes\":%lu,\"system_sequence\":%lu,"
+        "\"unallocated_bytes\":%lu,\"help_bytes\":%lu,\"system_sequence\":%lu,"
         "\"record_version\":5,\"record_bytes\":%lu,"
         "\"jedec\":\"%02X%02X%02X\","
         "\"spi\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu},"
         "\"i2c\":{\"used\":%lu,\"blocked\":%lu,\"free\":%lu}}",
         present ? "true" : "false", supported_flash() ? "true" : "false",
-        ready && !scanning && !migrating ? "true" : "false", job != JOB_IDLE ? "true" : "false",
+        ready && !scanning && !migrating ? "true" : "false",
+        (job != JOB_IDLE || external_lock) ? "true" : "false",
         (unsigned long)(supported_flash() ? FLASH_BYTES : 0U), (unsigned long)SECTOR_BYTES,
         (unsigned long)(2U * SECTOR_BYTES),
         (unsigned long)(COMMAND_LIBRARY_SLOTS * 2U * SECTOR_BYTES), COMMAND_LIBRARY_SLOTS,
-        (unsigned long)(2U * SECTOR_BYTES), (unsigned long)SYSTEM_BASE,
-        (unsigned long)system_current.sequence, (unsigned long)sizeof(store_record_t),
-        (unsigned int)jedec[0], (unsigned int)jedec[1], (unsigned int)jedec[2],
-        (unsigned long)used[0], (unsigned long)blocked[0],
+        (unsigned long)(2U * SECTOR_BYTES), (unsigned long)FLASH_HELP_BASE,
+        (unsigned long)FLASH_HELP_BYTES, (unsigned long)system_current.sequence,
+        (unsigned long)sizeof(store_record_t), (unsigned int)jedec[0], (unsigned int)jedec[1],
+        (unsigned int)jedec[2], (unsigned long)used[0], (unsigned long)blocked[0],
         (unsigned long)(COMMAND_LIBRARY_SLOTS - used[0] - blocked[0]), (unsigned long)used[1],
         (unsigned long)blocked[1], (unsigned long)(COMMAND_LIBRARY_SLOTS - used[1] - blocked[1]));
     return count > 0 && (size_t)count < capacity ? (size_t)count : 0U;
@@ -1282,7 +1293,7 @@ size_t command_store_json(char *json, size_t capacity)
     put_text(&writer, ",\"ready\":");
     put_text(&writer, ready ? "true" : "false");
     put_text(&writer, ",\"busy\":");
-    put_text(&writer, job != JOB_IDLE ? "true" : "false");
+    put_text(&writer, (job != JOB_IDLE || external_lock) ? "true" : "false");
     put_text(&writer, ",\"has_saved\":");
     put_text(&writer, has_saved ? "true" : "false");
     put_text(&writer, ",\"save_ok\":");
@@ -1425,4 +1436,29 @@ size_t command_library_json(char *json, size_t capacity, uint32_t offset)
     }
     json[writer.used] = '\0';
     return writer.used;
+}
+
+store_error_t command_flash_claim(void)
+{
+    uint8_t value;
+    const store_error_t error = available();
+    if (error != STORE_OK)
+    {
+        return error;
+    }
+    if (!status(&value) || value == 0xFFU)
+    {
+        return STORE_IO;
+    }
+    if ((value & 1U) != 0U)
+    {
+        return STORE_BUSY;
+    }
+    external_lock = true;
+    return STORE_OK;
+}
+
+void command_flash_release(void)
+{
+    external_lock = false;
 }

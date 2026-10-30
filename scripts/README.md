@@ -12,7 +12,7 @@
 `build_info.ps1` создаёт `src/build_info.h` с версией из
 `firmware/version.json`, временем UTC, SHA-256 исходников и CRC32 HTML.
 Он запускается из `build.ps1` и BeforeMake проекта Keil. Используется штатный
-Windows PowerShell и .NET; Python нужен только для генератора `embed_web.py`.
+Windows PowerShell и .NET; Python нужен для генераторов `embed_web.py` и `embed_help.py`.
 Не редактируй генерируемый заголовок вручную.
 
 Генератор gzip использует стандартную библиотеку Python, уровень 9, нулевое
@@ -21,3 +21,10 @@ Windows PowerShell и .NET; Python нужен только для генерат
 поэтому обычная сборка Keil уже готовой страницы не требует Python.
 Последний NUL массива — служебный: он не включён в Content-Length и HTTP body.
 
+
+## Ресурс справки
+
+После изменения `documentation/help.html` запускай `python scripts/embed_help.py`.
+Он создаёт `src/help_seed.h` с gzip-архивом и CRC32. Обычная сборка Keil использует
+готовый заголовок и не требует Python. На первом запуске/новой версии установщик
+записывает архив во внешнюю Flash; HTTP читает документ именно оттуда.

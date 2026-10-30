@@ -31,7 +31,8 @@ typedef enum
     HTTP_APPLY_SETTINGS,
     HTTP_MCU,
     HTTP_USART,
-    HTTP_USART_CONTROL
+    HTTP_USART_CONTROL,
+    HTTP_HELP
 } http_route_t;
 
 typedef struct

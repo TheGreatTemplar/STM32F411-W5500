@@ -301,6 +301,14 @@ assert b"img-src 'self' data:" in wire.split(b'\r\n\r\n', 1)[0]
 (root / 'build/http_page_response.bin').write_bytes(wire)
 print('HTTP gzip: actual ARM response decompresses byte-for-byte to source HTML')
 print("HTTP integration: four clients, stalled connection isolation, ADC/LED/SPI and response framing passed")
+help_size = int.from_bytes(uc.mem_read(symbols['captured_help_size'], 4), 'little')
+help_wire = bytes(uc.mem_read(symbols['captured_help'], help_size))
+help_headers, _, help_body = help_wire.partition(b'\r\n\r\n')
+assert b'Content-Encoding: gzip' in help_headers
+assert gzip.decompress(help_body) == (root / 'documentation/help.html').read_bytes()
+(root / 'build/help_page_response.bin').write_bytes(help_wire)
+print('HTTP Help: external streaming/busy resume, gzip negotiation, CSP and byte-for-byte document passed')
+
 
 uc, symbols = load_image(root / "build/store_test.axf")
 result = call(uc, symbols["test_entry"], timeout=120000000, count=1500000000)
