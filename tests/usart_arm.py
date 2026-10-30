@@ -49,7 +49,7 @@ def snapshot(cursor=0):
 call('usart_init')
 for irq, handler in [(37, 'USART1_IRQHandler'), (58, 'DMA2_Stream2_IRQHandler')]:
     assert read(symbols['__Vectors'] + (16 + irq) * 4) == symbols[handler] | 1
-assert not snapshot()['enabled']
+assert snapshot()['enabled']
 assert snapshot()['baud'] == 115200
 assert read(0x40020024) & 0xFF0 == 0x770  # PA9/PA10 AF7
 assert command('start baud=115200 bits=8 parity=0 stop=1\n') == 0

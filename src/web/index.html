@@ -321,7 +321,7 @@
                     <label>Биты данных<select id="uart-bits"><option selected>8</option><option>7</option></select></label>
                     <label>Чётность<select id="uart-parity"><option value="0">None</option><option value="1">Odd</option><option value="2">Even</option></select></label>
                     <label>Стоп-биты<select id="uart-stop"><option>1</option><option>2</option></select></label>
-                    <button type="button" id="uart-start">Включить USART</button><button type="button" id="uart-off">Отключить USART</button>
+
                 </div>
                 <p class="hint">USART, SPI и I2C используют постоянные частоты и могут работать без отключения USART. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.</p>
                 <p id="uart-state" role="status">Ожидание данных…</p>
@@ -526,8 +526,8 @@
             "USART, SPI и I2C используют постоянные частоты и могут работать без отключения USART. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "USART, SPI and I2C use fixed clocks; USART can stay enabled. Connect PA9 to PA10 for loopback: transmitted bytes appear in RX. Do not connect RS-232 directly.",
             "Проверь параметры USART и данные команды.": "Check USART settings and command data.",
             "USART занят передачей.": "USART is transmitting.",
-            "Сначала включи USART.": "Enable USART first.",
-            "Ошибка DMA USART. Включи USART заново.": "USART DMA error. Enable USART again.",
+            "USART остановлен. Измени параметр для повторного запуска.": "USART stopped. Change a setting to restart.",
+            "Ошибка DMA USART. Измени параметр для повторного запуска.": "USART DMA error. Change a setting to restart.",
             "Ошибка USART": "USART error",
             "Нет связи с USART.": "USART connection unavailable.",
             "Нет подтверждения операции USART. Не повторяй передачу автоматически.": "USART operation not confirmed. Do not retransmit automatically.",
@@ -883,8 +883,8 @@
             "USART, SPI и I2C используют постоянные частоты и могут работать без отключения USART. Для проверки соедини PA9 с PA10: переданные байты появятся в RX. RS-232 напрямую не подключать.": "USART、SPI、I2Cは固定クロックで動作し、USARTを無効にする必要はありません。PA9とPA10を接続すると送信データをRXで確認できます。RS-232を直接接続しないでください。",
             "Проверь параметры USART и данные команды.": "USART設定と送信データを確認してください。",
             "USART занят передачей.": "USARTは送信中です。",
-            "Сначала включи USART.": "先にUSARTを有効にしてください。",
-            "Ошибка DMA USART. Включи USART заново.": "USART DMAエラーです。再度有効にしてください。",
+            "USART остановлен. Измени параметр для повторного запуска.": "USARTは停止中です。設定を変更して再起動してください。",
+            "Ошибка DMA USART. Измени параметр для повторного запуска.": "USART DMAエラーです。設定を変更して再起動してください。",
             "Ошибка USART": "USARTエラー",
             "Нет связи с USART.": "USARTに接続できません。",
             "Нет подтверждения операции USART. Не повторяй передачу автоматически.": "USART操作を確認できません。自動的に再送信しないでください。",
@@ -1342,14 +1342,15 @@
         {
             return spiRates.includes(Number(get('spi-hz').value));
         }
+        let spiRateNotice = '';
         function setSpiRate(hz)
         {
-            const legacy = get('spi-legacy-rate');
-            const supported = spiRates.includes(Number(hz));
-            legacy.hidden = supported;
-            legacy.value = supported ? '' : String(hz);
-            setText(legacy, supported ? '—' : hz + ' Гц · требуется выбор');
-            get('spi-hz').value = String(hz);
+            const requested = Number(hz);
+            const selected = spiRates.includes(requested) ? requested :
+                spiRates.filter(rate => rate <= requested).pop() || spiRates[0];
+            spiRateNotice = selected === requested ? '' : requested + ' → ' + selected + ' Hz';
+            get('spi-legacy-rate').hidden = true;
+            get('spi-hz').value = String(selected);
         }
         function spiButtons()
         {
@@ -2402,7 +2403,7 @@
                     }
                     if (pendingSpiConfig === null)
                     {
-                        setText(get('spi-config-status'), 'Настройки SPI применены');
+                        setText(get('spi-config-status'), 'Настройки SPI применены' + (spiRateNotice ? ' · ' + spiRateNotice : ''));
                     }
                     return;
                 }
@@ -2980,8 +2981,6 @@
             {
                 get('uart-' + id).disabled = uartWriting || uartTxBusy || !uartConfigLoaded;
             }
-            get('uart-start').disabled = uartWriting || uartTxBusy || !uartConfigLoaded;
-            get('uart-off').disabled = uartWriting || uartTxBusy;
             get('uart-send').disabled = uartWriting || uartTxBusy || !uartDeviceEnabled;
         }
         function uartCount()
@@ -3040,7 +3039,7 @@
                 if (!reply.ok || data.error)
                 {
                     const messages = {1:'Проверь параметры USART и данные команды.',2:'USART занят передачей.',
-                        3:'Сначала включи USART.',4:'Ошибка DMA USART. Включи USART заново.'};
+                        3:'USART остановлен. Измени параметр для повторного запуска.',4:'Ошибка DMA USART. Измени параметр для повторного запуска.'};
                     const error = new Error(messages[data.error] || 'Ошибка USART');
                     error.rejected = true;
                     throw error;
@@ -3189,8 +3188,6 @@
         {
             get('uart-' + id).addEventListener('change', () => controlUart('start'));
         }
-        get('uart-start').addEventListener('click', () => controlUart('start'));
-        get('uart-off').addEventListener('click', () => controlUart('stop'));
         get('uart-send').addEventListener('click', () => controlUart('tx'));
         get('uart-clear').addEventListener('click', () =>
         {

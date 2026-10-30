@@ -152,6 +152,11 @@ void usart_init(void)
     NVIC_ClearPendingIRQ(DMA2_Stream2_IRQn);
     NVIC_EnableIRQ(USART1_IRQn);
     NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+    /* Permanent clocks allow RX to be ready independently of browser tabs. */
+    {
+        static const char defaults[] = "start baud=115200 bits=8 parity=0 stop=1\n";
+        (void)usart_control(defaults, sizeof(defaults) - 1U);
+    }
 }
 
 void usart_poll(void)

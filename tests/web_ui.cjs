@@ -5,6 +5,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../src/web/index.html'), 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\n\s*update\(\);\s*$/, '');
+assert.ok(!html.includes('id="uart-start"') && !html.includes('id="uart-off"'));
 const elements = new Map();
 const requests = [];
 const timers = new Map();
@@ -1083,12 +1084,10 @@ async function test()
     assert.match(elements.get('network-message').textContent, /65535/);
     vm.runInContext("['uart-format','uart-eol','uart-command','uart-baud','uart-bits','uart-parity','uart-stop'].forEach(get)",context);
     vm.runInContext('setSpiRate(1000000); queueSpiConfig()',context);
-    assert.equal(elements.get('spi-hz').value,'1000000');
-    assert.equal(elements.get('spi-legacy-rate').hidden,false);
-    const beforeLegacy = requests.filter(r=>r.url==='/api/spi').length;
-    vm.runInContext('consoleBus=2; queueSpi(0)',context);
-    assert.equal(requests.filter(r=>r.url==='/api/spi').length,beforeLegacy);
-    assert.match(elements.get('spi-message-0').textContent,/Частота старого/);
+    assert.equal(elements.get('spi-hz').value,'750000');
+    assert.equal(elements.get('spi-legacy-rate').hidden,true);
+    assert.equal(elements.get('spi-send-0').disabled,false);
+    assert.equal(vm.runInContext('spiRateNotice',context),'1000000 → 750000 Hz');
     vm.runInContext('setSpiRate(750000); queueSpiConfig()',context);
     assert.equal(elements.get('spi-legacy-rate').hidden,true);
     elements.get('uart-format').value = '0';
